@@ -5,19 +5,27 @@ import os
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+import app.database as db_module
 from app.database import close_db
+from app.config import settings
 from app.main import app
 
 
 @pytest.fixture
 async def api_client(tmp_path):
-    os.environ["DATABASE_PATH"] = str(tmp_path / "test.db")
+    db_path = str(tmp_path / "test.db")
+    os.environ["DATABASE_PATH"] = db_path
+    # Ensure the settings and database module see the fresh path
+    settings.database_path = db_path
+    # Reset the database singleton so a fresh DB is created
+    db_module._db = None
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     # Ensure db singleton is reset between tests
     await close_db()
+    db_module._db = None
 
 
 @pytest.mark.anyio

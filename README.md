@@ -1,418 +1,205 @@
 # ECLAW — Remote Claw Machine Controller
 
-ECLAW is a full-stack remote claw machine platform built around FastAPI, WebSockets, SQLite, and Raspberry Pi GPIO control.
+A full-stack platform for controlling a physical claw machine remotely over the web. Players join a queue, watch a live camera stream via WebRTC, control the claw in real-time with keyboard or touch controls, and see their results instantly.
 
-It lets remote players:
-- join a queue,
-- watch a live camera stream,
-- control the claw in real time,
-- and receive turn/game results.
-
-The project includes local mock mode for development, production deployment assets for Raspberry Pi 5, and an independent watchdog process that can force GPIO outputs off if the game server fails.
+Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock GPIO for development and testing.
 
 ---
 
-## Table of Contents
+## Quick Start
 
-- [What this project does](#what-this-project-does)
-- [Core architecture](#core-architecture)
-- [Repository layout](#repository-layout)
-- [Requirements](#requirements)
-- [Quick start (development)](#quick-start-development)
-- [Configuration](#configuration)
-- [How gameplay works](#how-gameplay-works)
-- [Backend API and WebSocket interfaces](#backend-api-and-websocket-interfaces)
-- [Database model](#database-model)
-- [Production deployment (Raspberry Pi 5)](#production-deployment-raspberry-pi-5)
-- [Operations and maintenance](#operations-and-maintenance)
-- [Testing and validation](#testing-and-validation)
-- [Known limitations and notes](#known-limitations-and-notes)
-
----
-
-## What this project does
-
-At runtime, ECLAW coordinates four concerns:
-
-1. **Queueing** players (join, leave, session lookup).
-2. **Turn orchestration** (ready prompt, timed tries, drop flow, win/loss/end).
-3. **Real-time control** over WebSocket (`/ws/control`) for authenticated players.
-4. **Live status broadcast** over WebSocket (`/ws/status`) for all viewers.
-
-It also exposes:
-- a public REST API under `/api/*`,
-- admin controls under `/admin/*` (header-protected),
-- static web UI served from `web/` for development.
-
----
-
-## Core architecture
-
-### Server-side components
-
-- **FastAPI application** (`app/main.py`)
-  - owns startup/shutdown lifecycle,
-  - initializes DB, GPIO, queue manager, status hub, control handler, state machine,
-  - mounts static frontend.
-
-- **State machine** (`app/game/state_machine.py`)
-  - canonical game flow + timers,
-  - state transitions: `idle -> ready_prompt -> moving -> dropping -> post_drop -> turn_end/idle`,
-  - handles turn timeout, move timeout, win callback bridge, and queue advancement.
-
-- **Queue manager** (`app/game/queue_manager.py`)
-  - SQLite-backed queue CRUD,
-  - tokenized player identity,
-  - stale-entry cleanup and queue status aggregation.
-
-- **GPIO controller** (`app/gpio/controller.py`)
-  - async-safe GPIO wrapper using a dedicated single-thread executor,
-  - supports hold directions + pulse outputs (`coin`, `drop`),
-  - emergency stop lock/unlock,
-  - mock GPIO implementation for non-Pi development.
-
-- **WebSocket layers**
-  - `StatusHub` (`app/ws/status_hub.py`) for fan-out broadcast,
-  - `ControlHandler` (`app/ws/control_handler.py`) for player auth + control events + rate limiting.
-
-- **Watchdog process** (`watchdog/main.py`)
-  - polls health endpoint,
-  - on repeated failure, claims GPIO pins directly via `lgpio` and forces outputs LOW.
-
-### Frontend components
-
-- Static UI in `web/`:
-  - `index.html` + `style.css` for layout,
-  - `app.js` orchestrates state/UI,
-  - `controls.js` manages control websocket and latency pings,
-  - `keyboard.js` + `touch_dpad.js` provide desktop/mobile input,
-  - `stream.js` handles WHEP/WebRTC playback from MediaMTX.
-
----
-
-## Repository layout
-
-```text
-app/                    FastAPI backend (API, game logic, GPIO, WS)
-web/                    Browser frontend (static app)
-watchdog/               GPIO fail-safe monitor process
-migrations/             SQLite schema migrations
-deploy/                 nginx, MediaMTX, systemd templates
-scripts/                Dev, health check, GPIO test, player simulation
-tests/                  API + state-machine tests
-install.sh              Interactive/dev/pi/test setup entrypoint
-Makefile                Common developer and ops commands
-```
-
----
-
-## Requirements
-
-### Development (local machine)
-
-- Python **3.11+**
-- `venv`
-- no physical GPIO required (use `MOCK_GPIO=true`)
-
-### Raspberry Pi production
-
-- Raspberry Pi 5 (recommended)
-- Python 3.11+
-- gpio access (`lgpio` backend)
-- MediaMTX for camera/streaming
-- nginx for reverse proxy + TLS
-- systemd for service management
-
----
-
-## Quick start (development)
-
-### 1) Install
+### Try it locally (any machine)
 
 ```bash
+git clone <repo-url> ECLAW && cd ECLAW
 ./install.sh dev
-```
-
-This creates `venv/`, installs dev dependencies, prepares `.env`, verifies imports, and runs tests.
-
-### 2) Start the app
-
-```bash
 make run
+# Open http://localhost:8000
 ```
 
-or:
+### Deploy on Pi 5 for a PoC demo
 
 ```bash
-./scripts/dev.sh
+git clone <repo-url> ECLAW && cd ECLAW
+./install.sh demo
+# Open http://<pi-ip> from any device on the network
 ```
 
-Default URL: `http://localhost:8000`
-
-### 3) Run tests
+### Deploy on Pi 5 for production
 
 ```bash
-make test
+./install.sh pi
 ```
 
-### 4) Simulate players (optional)
+See **[QUICKSTART.md](QUICKSTART.md)** for detailed step-by-step instructions including wiring guide, camera setup, demo day checklist, and troubleshooting.
+
+---
+
+## How It Works
+
+```
+Player's Phone/Laptop
+        |
+    HTTP + WebSocket
+        |
+   nginx (port 80)
+    /           \
+FastAPI        MediaMTX
+(game server)  (camera stream)
+    |               |
+ SQLite  GPIO    Pi Camera
+ (queue) (lgpio)
+    |       |
+  Queue   Relays --> Physical Claw Machine
+```
+
+1. **Player joins** via the web UI — enters name/email, gets a queue position
+2. **Queue advances** — when it's your turn, you get a ready prompt
+3. **Confirm ready** — the claw machine credits a coin (via GPIO pulse)
+4. **Move the claw** — WASD/arrows on desktop, touch D-pad on mobile
+5. **Drop** — space bar or DROP button fires the drop mechanism
+6. **Win detection** — GPIO input pin checks if a prize was grabbed
+7. **Results** — win/loss displayed, next player is automatically advanced
+
+---
+
+## Project Structure
+
+```
+app/                    FastAPI backend (API, game logic, GPIO, WebSocket)
+web/                    Browser UI (vanilla JS, no build step)
+watchdog/               Independent GPIO safety monitor
+migrations/             SQLite schema
+deploy/                 nginx, systemd, MediaMTX configs
+scripts/                Dev tools, health check, GPIO test, player simulator
+tests/                  pytest test suite
+install.sh              One-command setup (dev / pi / demo / test)
+Makefile                Common commands
+QUICKSTART.md           Detailed setup and demo guide
+```
+
+---
+
+## Make Commands
 
 ```bash
-make simulate
+make help             # Show all commands
+make install          # Dev environment setup
+make run              # Dev server (mock GPIO, auto-reload)
+make demo             # Demo mode (short timers, mock GPIO)
+make demo-pi          # Demo on Pi 5 (short timers, real GPIO)
+make test             # Run test suite
+make simulate         # Simulate 3 players
+make status           # Health check
+make logs             # Tail server logs
+make restart          # Restart all services
+make db-reset         # Reset database
 ```
 
 ---
 
 ## Configuration
 
-Configuration is loaded by `pydantic-settings` from `.env` (or `ECLAW_ENV_FILE` if set).
+All settings are in `.env` (copied from `.env.example` during install). Key settings:
 
-Key groups:
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `MOCK_GPIO` | `true` | Use mock GPIO (set `false` on Pi 5) |
+| `TRIES_PER_PLAYER` | `2` | Number of drop attempts per turn |
+| `TRY_MOVE_SECONDS` | `30` | Time to move before auto-drop |
+| `TURN_TIME_SECONDS` | `90` | Hard limit for entire turn |
+| `ADMIN_API_KEY` | `changeme` | **Change this in production** |
+| `PORT` | `8000` | Server listen port |
 
-- **Timing**
-  - `TRIES_PER_PLAYER`
-  - `TURN_TIME_SECONDS`
-  - `TRY_MOVE_SECONDS`
-  - `POST_DROP_WAIT_SECONDS`
-  - `READY_PROMPT_SECONDS`
-  - `QUEUE_GRACE_PERIOD_SECONDS`
-
-- **GPIO behavior**
-  - `COIN_PULSE_MS`, `DROP_PULSE_MS`, `MIN_INTER_PULSE_MS`
-  - `DIRECTION_HOLD_MAX_MS`
-  - `COIN_EACH_TRY`
-
-- **Input control/rate limits**
-  - `COMMAND_RATE_LIMIT_HZ`
-  - `DIRECTION_CONFLICT_MODE` (`ignore_new` or `replace`)
-
-- **Pin mapping (BCM)**
-  - `PIN_COIN`, `PIN_NORTH`, `PIN_SOUTH`, `PIN_WEST`, `PIN_EAST`, `PIN_DROP`, `PIN_WIN`
-
-- **Server/admin**
-  - `HOST`, `PORT`, `DATABASE_PATH`, `ADMIN_API_KEY`
-
-- **Watchdog/stream health**
-  - `WATCHDOG_HEALTH_URL`, `WATCHDOG_CHECK_INTERVAL_S`, `WATCHDOG_FAIL_THRESHOLD`
-  - `MEDIAMTX_HEALTH_URL`
-
-- **Development mode**
-  - `MOCK_GPIO=true` to run without hardware.
-
-> ⚠️ Always set a strong `ADMIN_API_KEY` in production.
-
----
-
-## How gameplay works
-
-### High-level flow
-
-1. Player submits `/api/queue/join` (name + email).
-2. Backend enqueues player and may advance queue.
-3. Next waiting player transitions to `ready` and receives `ready_prompt` on `/ws/control`.
-4. Player confirms readiness.
-5. Turn begins:
-   - hard turn timer starts,
-   - try begins (`coin` pulse if enabled),
-   - movement phase (`moving`) starts.
-6. During `moving`, player sends direction key events and can `drop`.
-7. In `dropping`, direction outputs are shut off and `drop` pulse is fired.
-8. In `post_drop`, win sensor callback is armed for a short timeout window.
-9. Outcome:
-   - win sensor => `win`,
-   - tries remaining => next try,
-   - no tries left => `loss`,
-   - timeout/disconnect/admin => `expired` or `admin_skipped`.
-10. Turn finalizes, queue status broadcasts, next player is considered.
-
-### Safety behavior
-
-- `emergency_stop()` immediately kills all outputs and sets lock.
-- State machine unlocks after turn finalization.
-- Watchdog can force pins OFF independently if server health collapses.
-
----
-
-## Backend API and WebSocket interfaces
-
-## REST API
-
-### Public (`/api`)
-
-- `POST /api/queue/join`
-  - input: `{ name, email }`
-  - output: `{ token, position, estimated_wait_seconds }`
-  - in-memory anti-abuse limit per IP/email.
-
-- `DELETE /api/queue/leave`
-  - header: `Authorization: Bearer <token>`
-  - marks waiting/ready entry cancelled.
-
-- `GET /api/queue/status`
-  - returns queue length + current player/state (aggregate).
-
-- `GET /api/queue`
-  - **full queue listing**: returns all waiting/ready/active entries with name, state, position, and join time.
-  - includes `current_player`, `game_state`, and `total` count.
-  - updates are also pushed in real time via `/ws/status` `queue_update` messages.
-
-- `GET /api/history`
-  - returns the 20 most recent completed turns (name, result, tries used, completion time).
-
-- `GET /api/session/me`
-  - header: bearer token
-  - returns current entry state, queue position, tries left.
-
-- `GET /api/health`
-  - server health + GPIO lock status + camera check + queue/viewer stats + uptime.
-
-### Admin (`/admin`)
-
-Header required: `X-Admin-Key: <ADMIN_API_KEY>`
-
-- `POST /admin/advance` — force-end active turn.
-- `POST /admin/emergency-stop` — lock GPIO immediately.
-- `POST /admin/unlock` — clear emergency lock.
-- `POST /admin/pause` — pause queue advancement.
-- `POST /admin/resume` — resume and advance queue.
-- `GET /admin/dashboard` — comprehensive live dashboard: uptime, game state, pause/lock status, viewer count, full queue entries, aggregate stats (total completed, wins), and recent results.
-
-## WebSockets
-
-- `/ws/status`
-  - open to viewers,
-  - receives broadcast events: `queue_update`, `state_update`, `turn_end`.
-  - `queue_update` now includes `entries` array with the full queue list for real-time UI updates.
-
-- `/ws/control`
-  - authenticated player socket,
-  - first message must be: `{ "type": "auth", "token": "..." }`,
-  - accepted control messages: `ready_confirm`, `keydown`, `keyup`, `drop`, `latency_ping`.
-
----
-
-## Database model
-
-SQLite schema is initialized by migration scripts in `migrations/`.
-
-Primary tables:
-
-- `queue_entries`
-  - player identity (token hash, name, email, IP),
-  - queue/turn lifecycle fields (`state`, `position`, timestamps, `result`, `tries_used`).
-
-- `game_events`
-  - append-only audit/event log with optional JSON detail.
-
-- `schema_version`
-  - applied migration tracking.
-
-DB path defaults to `./data/claw.db` in development.
-
----
-
-## Production deployment (Raspberry Pi 5)
-
-### One-command install path
+For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
 
 ```bash
-./install.sh pi
+cp .env.demo .env
+# or: ECLAW_ENV_FILE=.env.demo make run
 ```
 
-This delegates to `scripts/setup_pi.sh`, which:
-- installs system dependencies,
-- creates `claw` and `mediamtx` service users,
-- deploys app files into `/opt/claw`,
-- builds venv and installs requirements,
-- installs systemd services + nginx config,
-- enables services.
-
-### systemd services
-
-- `mediamtx.service`
-- `claw-server.service`
-- `claw-watchdog.service`
-
-### nginx role
-
-`deploy/nginx/claw.conf` routes:
-- `/` -> static frontend,
-- `/api/*` -> FastAPI,
-- `/ws/*` -> FastAPI websockets,
-- `/stream/*` -> MediaMTX WebRTC paths.
-
-Includes rate limiting and optional network restrictions for admin endpoints.
+Full configuration reference is in `.env.example`.
 
 ---
 
-## Operations and maintenance
+## API
 
-Useful commands:
+### Public Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/queue/join` | Join the queue (name + email) |
+| DELETE | `/api/queue/leave` | Leave the queue (Bearer token) |
+| GET | `/api/queue/status` | Queue length + current player |
+| GET | `/api/queue` | Full queue listing |
+| GET | `/api/session/me` | Your session state (Bearer token) |
+| GET | `/api/history` | Recent game results |
+| GET | `/api/health` | Server health status |
+
+### Admin Endpoints (require `X-Admin-Key` header)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/advance` | Force-end current turn |
+| POST | `/admin/emergency-stop` | Lock all GPIO |
+| POST | `/admin/unlock` | Unlock GPIO |
+| POST | `/admin/pause` | Pause queue |
+| POST | `/admin/resume` | Resume queue |
+| GET | `/admin/dashboard` | Full status dashboard |
+
+### WebSockets
+
+- `/ws/status` — Broadcast to all viewers (queue updates, state changes)
+- `/ws/control` — Authenticated player channel (auth, controls, results)
+
+Interactive API docs available at `/api/docs` (Swagger UI).
+
+---
+
+## Testing
 
 ```bash
-make status          # health checks
-make logs            # claw-server logs
-make logs-watchdog   # watchdog logs
-make logs-all        # all relevant services
-make restart         # restart server/watchdog/mediamtx
-make stop            # stop server/watchdog
-```
-
-Data and cleanup:
-
-```bash
-make db-reset        # delete SQLite DB
-make clean           # caches + DB artifacts
-make clean-all       # clean + remove venv
+make test             # Full test suite
+make test-quick       # Quick run
+make simulate         # 3 simulated players (sequential)
+make simulate-parallel  # 5 simulated players (concurrent)
+make status           # Health check against running server
 ```
 
 ---
 
-## Testing and validation
+## Requirements
 
-### Included automated tests
+### Development
 
-- `tests/test_api.py`
-  - health endpoint,
-  - queue join/status/session/leave,
-  - full queue listing (`/api/queue`),
-  - game history (`/api/history`),
-  - admin dashboard (`/admin/dashboard`),
-  - request validation behavior.
+- Python 3.11+
+- No hardware required (uses mock GPIO)
 
-- `tests/test_state_machine.py`
-  - win callback bridge to running event loop.
+### Pi 5 Production
 
-### Run all tests
-
-```bash
-pytest -q
-```
-
-or:
-
-```bash
-make test
-```
-
-### Runtime smoke check
-
-```bash
-scripts/health_check.sh http://localhost:8000
-```
+- Raspberry Pi 5 with Pi OS 64-bit
+- `python3-lgpio` (installed automatically)
+- nginx (installed automatically)
+- MediaMTX (installed automatically)
+- Pi Camera Module (for live stream)
 
 ---
 
-## Known limitations and notes
+## Safety
 
-- Join rate limiting is in-memory (per process), not distributed.
-- Mock mode validates control flow but does not emulate physical machine timing perfectly.
-- Frontend is static JS/CSS without build tooling (intentional simplicity).
-- For internet-facing deployment, TLS and stricter CORS/origin policies are strongly recommended.
+ECLAW includes multiple safety layers:
+
+- **State machine timeouts** — auto-drop if player is idle, hard turn timeout
+- **Emergency stop** — admin endpoint locks all GPIO immediately
+- **Watchdog process** — independent monitor that forces GPIO off if the server crashes
+- **Rate limiting** — prevents input flooding (25 Hz max)
+- **Direction conflict handling** — prevents opposing directions simultaneously
 
 ---
 
-If you want, the next step can be adding:
-1) sequence diagrams for state transitions and websocket events,
-2) OpenAPI snippets/examples for each endpoint,
-3) a dedicated operator runbook (incident handling + recovery checklist).
+## Known Limitations
+
+- Rate limiting is in-memory (single process) — fine for one Pi
+- Frontend is vanilla JS with no build tooling (intentional simplicity)
+- CORS is permissive (`*`) by default — restrict for internet-facing deployment
+- WebRTC streaming requires MediaMTX and a Pi Camera Module

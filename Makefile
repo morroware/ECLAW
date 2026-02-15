@@ -1,7 +1,7 @@
 # ECLAW — Common development and operations commands
 # Run 'make help' to see available targets
 
-.PHONY: help install run dev test simulate lint clean status logs deploy-check
+.PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check
 
 VENV     := venv/bin
 PYTHON   := $(VENV)/python
@@ -41,6 +41,18 @@ dev: ## Start dev server and open browser
 	@command -v xdg-open >/dev/null 2>&1 && (sleep 2 && xdg-open http://localhost:$(PORT)) & true
 	@command -v open >/dev/null 2>&1 && (sleep 2 && open http://localhost:$(PORT)) & true
 	MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
+
+demo: ## Start PoC demo mode (short timers, mock GPIO)
+	@echo "Starting ECLAW in PoC DEMO mode at http://localhost:$(PORT)"
+	@echo "  Short timers for fast demo cycles"
+	@echo "  Press Ctrl+C to stop"
+	ECLAW_ENV_FILE=.env.demo MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
+
+demo-pi: ## Start PoC demo on Pi 5 (short timers, real GPIO)
+	@echo "Starting ECLAW PoC DEMO on Pi 5 at http://0.0.0.0:$(PORT)"
+	@echo "  Short timers, REAL GPIO"
+	@echo "  Press Ctrl+C to stop"
+	ECLAW_ENV_FILE=.env.demo MOCK_GPIO=false GPIOZERO_PIN_FACTORY=lgpio $(UVICORN) app.main:app --host 0.0.0.0 --port $(PORT)
 
 # ---- Testing ---------------------------------------------------------------
 
