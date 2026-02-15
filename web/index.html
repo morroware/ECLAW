@@ -28,11 +28,14 @@
       </div>
     </div>
 
-    <!-- Queue Info -->
+    <!-- Queue Info Bar + Live Queue List -->
     <div id="queue-panel">
       <div id="queue-info">
         <span id="queue-length">Queue: 0</span>
         <span id="current-player-display"></span>
+      </div>
+      <div id="queue-list-container">
+        <ol id="queue-list"></ol>
       </div>
     </div>
 
@@ -50,8 +53,8 @@
     <!-- Waiting Panel (shown when in queue, waiting) -->
     <div id="waiting-panel" class="panel hidden">
       <h2>You're in the Queue!</h2>
-      <p>Position: <strong id="wait-position">—</strong></p>
-      <p>Estimated wait: <strong id="wait-time">—</strong></p>
+      <p>Position: <strong id="wait-position">--</strong></p>
+      <p>Estimated wait: <strong id="wait-time">--</strong></p>
       <button id="leave-btn">Leave Queue</button>
     </div>
 
@@ -96,6 +99,14 @@
       <h2 id="result-title"></h2>
       <p id="result-message"></p>
       <button id="play-again-btn">Play Again</button>
+    </div>
+
+    <!-- Recent Game History -->
+    <div id="history-panel" class="panel">
+      <h2>Recent Games</h2>
+      <div id="history-list">
+        <p class="text-dim">No games yet</p>
+      </div>
     </div>
   </div>
 

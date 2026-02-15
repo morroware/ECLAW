@@ -132,6 +132,57 @@ class QueueManager:
         )
         await db.commit()
 
+    async def list_queue(self) -> list[dict]:
+        """Return all active queue entries (waiting, ready, active) ordered by position."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT id, name, state, position, created_at "
+            "FROM queue_entries WHERE state IN ('waiting', 'ready', 'active') "
+            "ORDER BY CASE state "
+            "  WHEN 'active' THEN 0 WHEN 'ready' THEN 1 WHEN 'waiting' THEN 2 END, "
+            "position ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_recent_results(self, limit: int = 10) -> list[dict]:
+        """Return the most recent completed turns for the history feed."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT name, result, tries_used, completed_at "
+            "FROM queue_entries WHERE state = 'done' AND result IS NOT NULL "
+            "ORDER BY completed_at DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_stats(self) -> dict:
+        """Return aggregate statistics for the admin dashboard."""
+        db = await get_db()
+        stats = {}
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state = 'waiting'"
+        ) as cur:
+            stats["waiting"] = (await cur.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state IN ('active', 'ready')"
+        ) as cur:
+            stats["active"] = (await cur.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state = 'done'"
+        ) as cur:
+            stats["total_completed"] = (await cur.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state = 'done' AND result = 'win'"
+        ) as cur:
+            stats["total_wins"] = (await cur.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries"
+        ) as cur:
+            stats["total_entries"] = (await cur.fetchone())[0]
+        return stats
+
     async def get_waiting_count(self) -> int:
         """Get count of waiting players."""
         db = await get_db()

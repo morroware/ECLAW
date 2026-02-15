@@ -70,6 +70,85 @@ async def test_queue_join_and_status(api_client):
 
 
 @pytest.mark.anyio
+async def test_queue_full_listing(api_client):
+    """Test the full queue listing endpoint returns structured data."""
+    # Empty queue
+    res = await api_client.get("/api/queue")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 0
+    assert data["entries"] == []
+    assert data["current_player"] is None
+
+    # Add players
+    tokens = []
+    for i, name in enumerate(["Alice", "Bob", "Charlie"]):
+        res = await api_client.post(
+            "/api/queue/join",
+            json={"name": name, "email": f"{name.lower()}@test.com"},
+        )
+        assert res.status_code == 200
+        tokens.append(res.json()["token"])
+
+    # Check listing
+    res = await api_client.get("/api/queue")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] >= 2  # At least some entries (first may have advanced)
+    assert data["game_state"] is not None
+
+    # Entries should have name, state, position
+    for entry in data["entries"]:
+        assert "name" in entry
+        assert "state" in entry
+        assert entry["state"] in ("waiting", "ready", "active")
+
+    # Leave one and verify count decreases
+    res = await api_client.delete(
+        "/api/queue/leave",
+        headers={"Authorization": f"Bearer {tokens[2]}"},
+    )
+    assert res.status_code == 200
+
+    res = await api_client.get("/api/queue")
+    new_total = res.json()["total"]
+    assert new_total < data["total"]
+
+
+@pytest.mark.anyio
+async def test_history_endpoint(api_client):
+    """Test the history endpoint returns empty initially."""
+    res = await api_client.get("/api/history")
+    assert res.status_code == 200
+    data = res.json()
+    assert "entries" in data
+    assert isinstance(data["entries"], list)
+
+
+@pytest.mark.anyio
+async def test_admin_dashboard(api_client):
+    """Test the admin dashboard endpoint."""
+    # Without admin key — should fail
+    res = await api_client.get("/admin/dashboard")
+    assert res.status_code == 422  # Missing header
+
+    # With admin key
+    res = await api_client.get(
+        "/admin/dashboard",
+        headers={"X-Admin-Key": "changeme"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "uptime_seconds" in data
+    assert "game_state" in data
+    assert "stats" in data
+    assert "queue" in data
+    assert "recent_results" in data
+    assert isinstance(data["stats"]["waiting"], int)
+    assert isinstance(data["stats"]["total_wins"], int)
+
+
+@pytest.mark.anyio
 async def test_join_validation(api_client):
     # Name too short
     res = await api_client.post(
