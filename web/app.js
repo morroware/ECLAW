@@ -64,6 +64,9 @@
         currentPlayerDisplay.textContent = msg.current_player
           ? `Playing: ${msg.current_player}`
           : "";
+        if (msg.viewer_count != null) {
+          viewerCount.textContent = `${msg.viewer_count} viewer${msg.viewer_count !== 1 ? "s" : ""}`;
+        }
       }
 
       if (msg.type === "state_update") {
@@ -434,7 +437,6 @@
         currentPlayerDisplay.textContent = data.current_player
           ? `Playing: ${data.current_player}`
           : "";
-        viewerCount.textContent = "";
       }
     } catch (e) {
       // Ignore

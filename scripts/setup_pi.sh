@@ -72,8 +72,12 @@ sudo cp "$SCRIPT_DIR/deploy/systemd/mediamtx.service" /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/deploy/systemd/claw-server.service" /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/deploy/systemd/claw-watchdog.service" /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/deploy/nginx/claw.conf" /etc/nginx/sites-available/claw
+sudo ln -sf /etc/nginx/sites-available/claw /etc/nginx/sites-enabled/claw
+# Remove default site if present
+sudo rm -f /etc/nginx/sites-enabled/default
 
 sudo systemctl daemon-reload
+sudo nginx -t && sudo systemctl reload nginx
 
 # --- Enable services ---
 echo "[8/8] Enabling services..."

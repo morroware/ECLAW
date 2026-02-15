@@ -72,9 +72,9 @@ def main():
     logger.info(f"Check interval: {CHECK_INTERVAL}s, threshold: {FAIL_THRESHOLD}")
     logger.info(f"Monitoring pins: {OUTPUT_PINS}")
 
-    while True:
-        try:
-            with httpx.Client(timeout=2) as client:
+    with httpx.Client(timeout=2) as client:
+        while True:
+            try:
                 r = client.get(HEALTH_URL)
                 if r.status_code == 200:
                     fail_count = 0
@@ -87,17 +87,17 @@ def main():
                         f"Health check returned {r.status_code} "
                         f"(fail {fail_count}/{FAIL_THRESHOLD})"
                     )
-        except Exception as e:
-            fail_count += 1
-            logger.warning(
-                f"Health check failed: {e} (fail {fail_count}/{FAIL_THRESHOLD})"
-            )
+            except Exception as e:
+                fail_count += 1
+                logger.warning(
+                    f"Health check failed: {e} (fail {fail_count}/{FAIL_THRESHOLD})"
+                )
 
-        if fail_count >= FAIL_THRESHOLD and not triggered:
-            force_all_pins_off()
-            triggered = True
+            if fail_count >= FAIL_THRESHOLD and not triggered:
+                force_all_pins_off()
+                triggered = True
 
-        time.sleep(CHECK_INTERVAL)
+            time.sleep(CHECK_INTERVAL)
 
 
 if __name__ == "__main__":
