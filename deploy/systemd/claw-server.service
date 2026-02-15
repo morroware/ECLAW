@@ -1,0 +1,19 @@
+[Unit]
+Description=Claw Machine Game Server
+After=network.target mediamtx.service
+Wants=mediamtx.service
+
+[Service]
+Type=exec
+WorkingDirectory=/opt/claw
+EnvironmentFile=/opt/claw/.env
+ExecStart=/opt/claw/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+User=claw
+SupplementaryGroups=gpio
+Environment=PYTHONUNBUFFERED=1
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
