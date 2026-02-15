@@ -1,0 +1,113 @@
+"""FastAPI application entrypoint — lifespan, routes, and WebSocket endpoints."""
+
+import logging
+import os
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.api.admin import admin_router
+from app.api.routes import router as api_router
+from app.config import settings
+from app.database import close_db, get_db
+from app.game.queue_manager import QueueManager
+from app.game.state_machine import StateMachine
+from app.gpio.controller import GPIOController
+from app.ws.control_handler import ControlHandler
+from app.ws.status_hub import StatusHub
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown logic."""
+    logger.info("Starting claw machine server")
+    app.state.start_time = time.time()
+
+    # Init database
+    await get_db()
+    logger.info("Database initialized")
+
+    # Init GPIO
+    gpio = GPIOController()
+    await gpio.initialize()
+    app.state.gpio_controller = gpio
+
+    # Init managers
+    qm = QueueManager()
+    await qm.cleanup_stale(settings.turn_time_seconds * 2)
+    app.state.queue_manager = qm
+
+    ws_hub = StatusHub()
+    app.state.ws_hub = ws_hub
+
+    # Create state machine and control handler (circular ref resolved via late binding)
+    ctrl = ControlHandler(None, qm, gpio, settings)  # sm set below
+    sm = StateMachine(gpio, qm, ws_hub, ctrl, settings)
+    ctrl.sm = sm  # wire up the reference
+
+    app.state.state_machine = sm
+    app.state.control_handler = ctrl
+
+    # Resume queue if entries exist
+    await sm.advance_queue()
+
+    logger.info("Server ready (mock_gpio=%s)", settings.mock_gpio)
+    yield
+
+    # Shutdown
+    logger.info("Shutting down")
+    await gpio.cleanup()
+    await close_db()
+    logger.info("Shutdown complete")
+
+
+app = FastAPI(
+    title="ECLAW Remote Claw Machine",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url=None,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Restrict to your domain in production
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Admin-Key"],
+)
+
+# REST routes
+app.include_router(api_router)
+app.include_router(admin_router)
+
+
+# WebSocket routes
+@app.websocket("/ws/status")
+async def ws_status(ws: WebSocket):
+    hub = app.state.ws_hub
+    await hub.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()  # Keep alive; ignore messages
+    except Exception:
+        hub.disconnect(ws)
+
+
+@app.websocket("/ws/control")
+async def ws_control(ws: WebSocket):
+    await app.state.control_handler.handle_connection(ws)
+
+
+# Static files (served by nginx in prod, useful in dev)
+static_dir = os.path.join(os.path.dirname(__file__), "..", "web")
+if os.path.isdir(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")

@@ -1,0 +1,27 @@
+# MediaMTX configuration for ECLAW
+# Copy to /etc/mediamtx.yml on the Pi 5
+
+logLevel: warn
+
+webrtc:
+  address: :8889
+  iceServers:
+    - url: stun:stun.l.google.com:19302
+
+rtsp:
+  address: :8554
+
+paths:
+  cam:
+    source: rpiCamera
+    sourceOnDemand: false
+    rpiCameraWidth: 1280
+    rpiCameraHeight: 720
+    rpiCameraFPS: 30
+    rpiCameraBitrate: 2000000
+    rpiCameraIDRPeriod: 30
+    rpiCameraAfMode: continuous
+    rpiCameraAfRange: normal
+    # Uncomment if mounted upside down:
+    # rpiCameraHFlip: true
+    # rpiCameraVFlip: true

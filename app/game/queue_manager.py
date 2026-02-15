@@ -1,0 +1,138 @@
+"""Queue management — CRUD operations for the player queue."""
+
+import json
+import secrets
+import uuid
+from datetime import datetime, timezone
+
+from app.database import get_db, hash_token, log_event
+
+
+class QueueManager:
+    async def join(self, name: str, email: str, ip: str) -> dict:
+        """Add a user to the queue. Returns {id, token, position}."""
+        db = await get_db()
+        entry_id = str(uuid.uuid4())
+        raw_token = secrets.token_urlsafe(32)
+        token_h = hash_token(raw_token)
+
+        # Determine next position
+        async with db.execute(
+            "SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'"
+        ) as cur:
+            row = await cur.fetchone()
+            next_pos = (row[0] or 0) + 1
+
+        await db.execute(
+            """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
+               VALUES (?, ?, ?, ?, ?, 'waiting', ?)""",
+            (entry_id, token_h, name, email, ip, next_pos),
+        )
+        await db.commit()
+
+        await log_event(entry_id, "join", json.dumps({"name": name, "position": next_pos}))
+
+        return {"id": entry_id, "token": raw_token, "position": next_pos}
+
+    async def leave(self, token_hash: str) -> bool:
+        """Cancel a waiting/ready player's queue entry."""
+        db = await get_db()
+        # Find entry first for logging
+        async with db.execute(
+            "SELECT id FROM queue_entries WHERE token_hash = ? AND state IN ('waiting', 'ready')",
+            (token_hash,),
+        ) as cur:
+            row = await cur.fetchone()
+            entry_id = row[0] if row else None
+
+        await db.execute(
+            "UPDATE queue_entries SET state = 'cancelled', completed_at = datetime('now') "
+            "WHERE token_hash = ? AND state IN ('waiting', 'ready')",
+            (token_hash,),
+        )
+        await db.commit()
+
+        if entry_id:
+            await log_event(entry_id, "leave")
+
+        return True
+
+    async def peek_next_waiting(self) -> dict | None:
+        """Get the next player in the waiting queue."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT * FROM queue_entries WHERE state = 'waiting' ORDER BY position ASC LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def set_state(self, entry_id: str, state: str):
+        """Update a queue entry's state."""
+        db = await get_db()
+        activated_at = None
+        if state == "active":
+            activated_at = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "UPDATE queue_entries SET state = ?, activated_at = COALESCE(?, activated_at) WHERE id = ?",
+            (state, activated_at, entry_id),
+        )
+        await db.commit()
+
+        await log_event(entry_id, f"state_{state}")
+
+    async def complete_entry(self, entry_id: str, result: str, tries_used: int):
+        """Mark a queue entry as done with a result."""
+        db = await get_db()
+        await db.execute(
+            "UPDATE queue_entries SET state = 'done', result = ?, tries_used = ?, "
+            "completed_at = datetime('now') WHERE id = ?",
+            (result, tries_used, entry_id),
+        )
+        await db.commit()
+
+        await log_event(entry_id, "turn_end", json.dumps({"result": result, "tries": tries_used}))
+
+    async def get_by_token(self, token_hash: str) -> dict | None:
+        """Look up a queue entry by token hash."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT * FROM queue_entries WHERE token_hash = ?", (token_hash,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+    async def get_queue_status(self) -> dict:
+        """Get current queue stats for broadcasting."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state = 'waiting'"
+        ) as cur:
+            waiting = (await cur.fetchone())[0]
+        async with db.execute(
+            "SELECT name, state FROM queue_entries WHERE state IN ('active', 'ready') LIMIT 1"
+        ) as cur:
+            active_row = await cur.fetchone()
+        return {
+            "queue_length": waiting,
+            "current_player": dict(active_row)["name"] if active_row else None,
+            "current_player_state": dict(active_row)["state"] if active_row else None,
+        }
+
+    async def cleanup_stale(self, grace_seconds: int):
+        """Called on startup. Expire entries that were left active too long ago."""
+        db = await get_db()
+        await db.execute(
+            "UPDATE queue_entries SET state = 'expired' "
+            "WHERE state = 'active' AND activated_at IS NOT NULL "
+            "AND (julianday('now') - julianday(activated_at)) * 86400 > ?",
+            (grace_seconds,),
+        )
+        await db.commit()
+
+    async def get_waiting_count(self) -> int:
+        """Get count of waiting players."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries WHERE state = 'waiting'"
+        ) as cur:
+            return (await cur.fetchone())[0]

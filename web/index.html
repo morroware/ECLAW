@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ECLAW — Remote Claw Machine</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <h1>ECLAW</h1>
+      <div id="status-bar">
+        <span id="connection-status" class="status-dot disconnected"></span>
+        <span id="viewer-count">0 viewers</span>
+        <span id="latency-display"></span>
+      </div>
+    </header>
+
+    <!-- Video Stream -->
+    <div id="stream-container">
+      <video id="stream-video" autoplay playsinline muted></video>
+      <div id="stream-overlay">
+        <div id="game-state-display"></div>
+        <div id="try-display"></div>
+        <div id="timer-display"></div>
+      </div>
+    </div>
+
+    <!-- Queue Info -->
+    <div id="queue-panel">
+      <div id="queue-info">
+        <span id="queue-length">Queue: 0</span>
+        <span id="current-player-display"></span>
+      </div>
+    </div>
+
+    <!-- Join Form (shown when not in queue) -->
+    <div id="join-panel" class="panel">
+      <h2>Join the Queue</h2>
+      <form id="join-form">
+        <input type="text" id="join-name" placeholder="Your name" required minlength="2" maxlength="50">
+        <input type="email" id="join-email" placeholder="Email" required>
+        <button type="submit" id="join-btn">Join Queue</button>
+      </form>
+      <p id="join-error" class="error"></p>
+    </div>
+
+    <!-- Waiting Panel (shown when in queue, waiting) -->
+    <div id="waiting-panel" class="panel hidden">
+      <h2>You're in the Queue!</h2>
+      <p>Position: <strong id="wait-position">—</strong></p>
+      <p>Estimated wait: <strong id="wait-time">—</strong></p>
+      <button id="leave-btn">Leave Queue</button>
+    </div>
+
+    <!-- Ready Prompt (shown when it's your turn) -->
+    <div id="ready-panel" class="panel hidden">
+      <h2>It's Your Turn!</h2>
+      <p>Press Ready to start playing</p>
+      <button id="ready-btn" class="big-btn">READY</button>
+      <div id="ready-timer"></div>
+    </div>
+
+    <!-- Controls (shown when actively playing) -->
+    <div id="controls-panel" class="panel hidden">
+      <div id="controls-info">
+        <span id="ctrl-try">Try 1/2</span>
+        <span id="ctrl-timer">30s</span>
+      </div>
+
+      <!-- Desktop: WASD + Space -->
+      <div id="keyboard-hint" class="desktop-only">
+        Use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or Arrow Keys to move &bull; <kbd>Space</kbd> to drop
+      </div>
+
+      <!-- Mobile: Touch D-Pad -->
+      <div id="dpad-container" class="mobile-only">
+        <div id="dpad">
+          <div class="dpad-btn dpad-up" data-dir="north">&#9650;</div>
+          <div class="dpad-btn dpad-left" data-dir="west">&#9664;</div>
+          <div class="dpad-btn dpad-center"></div>
+          <div class="dpad-btn dpad-right" data-dir="east">&#9654;</div>
+          <div class="dpad-btn dpad-down" data-dir="south">&#9660;</div>
+        </div>
+        <button id="drop-btn-mobile" class="big-btn drop-btn">DROP</button>
+      </div>
+
+      <!-- Desktop drop button -->
+      <button id="drop-btn-desktop" class="big-btn drop-btn desktop-only">DROP (Space)</button>
+    </div>
+
+    <!-- Turn End Panel -->
+    <div id="result-panel" class="panel hidden">
+      <h2 id="result-title"></h2>
+      <p id="result-message"></p>
+      <button id="play-again-btn">Play Again</button>
+    </div>
+  </div>
+
+  <script src="stream.js"></script>
+  <script src="controls.js"></script>
+  <script src="keyboard.js"></script>
+  <script src="touch_dpad.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
