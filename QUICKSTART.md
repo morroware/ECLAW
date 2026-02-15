@@ -12,7 +12,7 @@ This guide gets ECLAW running on a Raspberry Pi 5 for a PoC demo. If you just wa
 - Pi OS 64-bit (Lite or Desktop) — Bookworm or newer
 - MicroSD card (16GB+)
 - Ethernet or Wi-Fi connection
-- Pi Camera Module 3 (optional, for live stream)
+- Pi Camera Module 3 **or** USB webcam (optional, for live stream)
 - Relay board or direct wiring to claw machine (optional for first test)
 
 ### For Local Development (any machine)
@@ -195,9 +195,9 @@ Then restart: `sudo systemctl restart claw-server`
 
 ## Camera Setup
 
-ECLAW streams the Pi Camera via MediaMTX using WebRTC.
+ECLAW streams video via MediaMTX using WebRTC. Both Pi Camera modules and USB cameras are supported. The setup script auto-detects which type is connected.
 
-### Step 1: Enable the camera
+### Pi Camera
 
 ```bash
 # Test the camera works:
@@ -206,22 +206,7 @@ rpicam-still -o /tmp/test.jpg
 
 If this fails, check that the camera ribbon cable is seated properly and the camera interface is enabled in `raspi-config`.
 
-### Step 2: Verify the stream
-
-MediaMTX should already be running after install. Check:
-
-```bash
-# Direct stream test:
-curl http://localhost:8889/v3/paths/list
-```
-
-The stream is available at:
-- WebRTC: http://\<pi-ip\>:8889/cam (direct MediaMTX)
-- Via nginx: http://\<pi-ip\>/stream/cam/whep (proxied, used by the UI)
-
-### Camera settings
-
-Edit `/etc/mediamtx.yml` to adjust resolution, framerate, or flip:
+Settings in `/etc/mediamtx.yml`:
 
 ```yaml
 paths:
@@ -234,6 +219,40 @@ paths:
     # rpiCameraHFlip: true
     # rpiCameraVFlip: true
 ```
+
+### USB Camera
+
+If no Pi Camera is detected, the setup script automatically configures MediaMTX to use a USB camera via FFmpeg.
+
+```bash
+# Check that your USB camera is recognized:
+v4l2-ctl --list-devices
+
+# List supported formats:
+v4l2-ctl -d /dev/video0 --list-formats-ext
+```
+
+If your camera is on a different device (e.g. `/dev/video2`), edit `/etc/mediamtx.yml` and change the `-i /dev/video0` path in the `runOnInit` line.
+
+To manually switch to USB camera config:
+
+```bash
+sudo cp /opt/claw/deploy/mediamtx-usb.yml /etc/mediamtx.yml
+sudo systemctl restart mediamtx
+```
+
+### Verify the stream
+
+MediaMTX should already be running after install. Check:
+
+```bash
+# Direct stream test:
+curl http://localhost:8889/v3/paths/list
+```
+
+The stream is available at:
+- WebRTC: http://\<pi-ip\>:8889/cam (direct MediaMTX)
+- Via nginx: http://\<pi-ip\>/stream/cam/whep (proxied, used by the UI)
 
 Then: `sudo systemctl restart mediamtx`
 
@@ -278,17 +297,23 @@ Common causes:
 ### Camera not working
 
 ```bash
-# Test camera directly:
+# Test Pi Camera directly:
 rpicam-still -o /tmp/test.jpg
+
+# Test USB camera:
+v4l2-ctl --list-devices
+ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 /tmp/test.jpg
 
 # Check MediaMTX logs:
 sudo journalctl -u mediamtx -n 50 --no-pager
 ```
 
 Common causes:
-- Camera cable not seated properly
-- Camera interface not enabled (run `sudo raspi-config` > Interface Options > Camera)
-- Wrong camera module (Pi Camera Module 3 is recommended)
+- **Pi Camera**: Cable not seated, or interface not enabled (`sudo raspi-config` > Interface Options > Camera)
+- **USB Camera**: Device not at `/dev/video0` — check `v4l2-ctl --list-devices` and update `/etc/mediamtx.yml`
+- **USB Camera**: Camera doesn't support MJPEG — change `-input_format mjpeg` to `-input_format yuyv422` in `/etc/mediamtx.yml`
+- **Both**: Wrong config file deployed — check `/etc/mediamtx.yml` matches your camera type
+- ffmpeg not installed (USB cameras require it) — `sudo apt install ffmpeg`
 
 ### GPIO not responding
 
@@ -356,7 +381,7 @@ make restart        # Restart all services
         +-------+-------+     |
         |       |       |     |
      Queue   State    GPIO  Camera
-     (SQLite) Machine (lgpio)(rpicam)
+     (SQLite) Machine (lgpio)(rpicam/usb)
         |       |       |
         +-------+-------+
                 |

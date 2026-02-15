@@ -1,0 +1,47 @@
+# MediaMTX configuration for ECLAW — USB Camera
+# Copy to /etc/mediamtx.yml on the Pi 5 (or any Linux host with a USB camera)
+#
+# This config uses ffmpeg to capture from a V4L2 USB camera device
+# and publish the stream into MediaMTX via RTSP.
+#
+# Requirements:
+#   - ffmpeg installed (apt install ffmpeg)
+#   - USB camera connected (check: ls /dev/video*)
+
+logLevel: warn
+
+webrtc:
+  address: :8889
+  iceServers:
+    - url: stun:stun.l.google.com:19302
+
+rtsp:
+  address: :8554
+
+paths:
+  cam:
+    # ffmpeg captures from the USB camera and publishes to this path via RTSP.
+    # MediaMTX variables: $RTSP_PORT and $MTX_PATH are provided automatically.
+    runOnInit: >-
+      ffmpeg -f v4l2
+      -input_format mjpeg
+      -video_size 1280x720
+      -framerate 30
+      -i /dev/video0
+      -c:v libx264
+      -preset ultrafast
+      -tune zerolatency
+      -b:v 2000k
+      -g 30
+      -f rtsp
+      rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes
+    sourceOnDemand: false
+
+    # To use a different USB camera device, change /dev/video0 above.
+    # List available devices with: v4l2-ctl --list-devices
+    # List supported formats with: v4l2-ctl -d /dev/video0 --list-formats-ext
+    #
+    # If your camera doesn't support MJPEG, change -input_format to:
+    #   -input_format yuyv422
+    # (this may limit resolution/framerate)

@@ -72,6 +72,7 @@ sudo apt install -y \
     python3 python3-venv python3-pip \
     python3-lgpio \
     nginx sqlite3 \
+    ffmpeg v4l-utils \
     curl wget 2>&1 | tail -1
 ok "System packages installed"
 
@@ -175,9 +176,25 @@ fi
 echo ""
 echo -e "${BOLD}[7/8] Installing service files and nginx config...${NC}"
 
-# MediaMTX config
-sudo cp "$SCRIPT_DIR/deploy/mediamtx.yml" /etc/mediamtx.yml
-ok "MediaMTX config installed"
+# MediaMTX config — auto-detect camera type
+CAMERA_TYPE="none"
+if command -v rpicam-still &>/dev/null && rpicam-still --list-cameras 2>&1 | grep -q "Available cameras"; then
+    CAMERA_TYPE="picam"
+elif ls /dev/video* &>/dev/null; then
+    CAMERA_TYPE="usb"
+fi
+
+if [ "$CAMERA_TYPE" = "picam" ]; then
+    sudo cp "$SCRIPT_DIR/deploy/mediamtx.yml" /etc/mediamtx.yml
+    ok "MediaMTX config installed (Pi Camera detected)"
+elif [ "$CAMERA_TYPE" = "usb" ]; then
+    sudo cp "$SCRIPT_DIR/deploy/mediamtx-usb.yml" /etc/mediamtx.yml
+    ok "MediaMTX config installed (USB camera detected)"
+else
+    sudo cp "$SCRIPT_DIR/deploy/mediamtx.yml" /etc/mediamtx.yml
+    warn "No camera detected — installed Pi Camera config as default"
+    warn "If using a USB camera, copy deploy/mediamtx-usb.yml to /etc/mediamtx.yml"
+fi
 
 # Systemd services
 sudo cp "$SCRIPT_DIR/deploy/systemd/mediamtx.service" /etc/systemd/system/
@@ -249,6 +266,10 @@ echo "    make health-check                    # Run health check"
 echo ""
 echo "  IMPORTANT:"
 echo "    1. Change ADMIN_API_KEY in /opt/claw/.env"
+if [ "$CAMERA_TYPE" = "usb" ]; then
+echo "    2. Camera: USB camera on /dev/video0 (list devices: v4l2-ctl --list-devices)"
+else
 echo "    2. Test camera: rpicam-still -o /tmp/test.jpg"
+fi
 echo "    3. Connect to http://$PI_IP from any device on your network"
 echo ""
