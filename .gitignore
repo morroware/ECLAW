@@ -16,3 +16,6 @@ data/
 htmlcov/
 *.log
 node_modules/
+
+# Environment config (may contain secrets) — use .env.example as template
+.env

@@ -2,18 +2,11 @@
 
 import os
 
-os.environ["MOCK_GPIO"] = "true"
-os.environ["GPIOZERO_PIN_FACTORY"] = "mock"
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.database import close_db
 from app.main import app
-
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
 
 
 @pytest.fixture
@@ -23,6 +16,8 @@ async def api_client(tmp_path):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
+    # Ensure db singleton is reset between tests
+    await close_db()
 
 
 @pytest.mark.anyio
