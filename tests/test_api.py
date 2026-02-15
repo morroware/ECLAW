@@ -9,6 +9,7 @@ import app.database as db_module
 from app.database import close_db
 from app.config import settings
 from app.main import app
+from app.api.routes import _join_limits
 
 
 @pytest.fixture
@@ -19,6 +20,7 @@ async def api_client(tmp_path):
     settings.database_path = db_path
     # Reset the database singleton so a fresh DB is created
     db_module._db = None
+    _join_limits.clear()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -95,7 +97,7 @@ async def test_queue_full_listing(api_client):
             "/api/queue/join",
             json={"name": name, "email": f"{name.lower()}@test.com"},
         )
-        assert res.status_code == 200
+        assert res.status_code == 200, res.text
         tokens.append(res.json()["token"])
 
     # Check listing
@@ -155,6 +157,29 @@ async def test_admin_dashboard(api_client):
     assert isinstance(data["stats"]["waiting"], int)
     assert isinstance(data["stats"]["total_wins"], int)
 
+
+
+
+@pytest.mark.anyio
+async def test_join_rate_limit_normalizes_email(api_client):
+    email_variants = [
+        "Demo@Example.com",
+        " demo@example.com ",
+        "DEMO@example.com",
+    ]
+
+    for i, email in enumerate(email_variants):
+        res = await api_client.post(
+            "/api/queue/join",
+            json={"name": f"Player{i}", "email": email},
+        )
+        assert res.status_code == 200
+
+    blocked = await api_client.post(
+        "/api/queue/join",
+        json={"name": "Player3", "email": "demo@example.com"},
+    )
+    assert blocked.status_code == 429
 
 @pytest.mark.anyio
 async def test_join_validation(api_client):

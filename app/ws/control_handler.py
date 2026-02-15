@@ -125,7 +125,7 @@ class ControlHandler:
 
     async def _disconnect_grace(self, entry_id: str, grace_seconds: int):
         """Wait for reconnection. If not reconnected, end turn."""
-        await asyncio.sleep(min(grace_seconds, 10))  # Active player gets short grace
+        await asyncio.sleep(grace_seconds)
         if entry_id not in self._player_ws and entry_id == self.sm.active_entry_id:
             logger.info(f"Grace period expired for {entry_id}")
             await self.sm.handle_disconnect_timeout(entry_id)
