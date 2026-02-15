@@ -249,7 +249,15 @@ Key groups:
   - marks waiting/ready entry cancelled.
 
 - `GET /api/queue/status`
-  - returns queue length + current player/state.
+  - returns queue length + current player/state (aggregate).
+
+- `GET /api/queue`
+  - **full queue listing**: returns all waiting/ready/active entries with name, state, position, and join time.
+  - includes `current_player`, `game_state`, and `total` count.
+  - updates are also pushed in real time via `/ws/status` `queue_update` messages.
+
+- `GET /api/history`
+  - returns the 20 most recent completed turns (name, result, tries used, completion time).
 
 - `GET /api/session/me`
   - header: bearer token
@@ -267,12 +275,14 @@ Header required: `X-Admin-Key: <ADMIN_API_KEY>`
 - `POST /admin/unlock` — clear emergency lock.
 - `POST /admin/pause` — pause queue advancement.
 - `POST /admin/resume` — resume and advance queue.
+- `GET /admin/dashboard` — comprehensive live dashboard: uptime, game state, pause/lock status, viewer count, full queue entries, aggregate stats (total completed, wins), and recent results.
 
 ## WebSockets
 
 - `/ws/status`
   - open to viewers,
   - receives broadcast events: `queue_update`, `state_update`, `turn_end`.
+  - `queue_update` now includes `entries` array with the full queue list for real-time UI updates.
 
 - `/ws/control`
   - authenticated player socket,
@@ -365,6 +375,9 @@ make clean-all       # clean + remove venv
 - `tests/test_api.py`
   - health endpoint,
   - queue join/status/session/leave,
+  - full queue listing (`/api/queue`),
+  - game history (`/api/history`),
+  - admin dashboard (`/admin/dashboard`),
   - request validation behavior.
 
 - `tests/test_state_machine.py`
@@ -392,7 +405,6 @@ scripts/health_check.sh http://localhost:8000
 
 ## Known limitations and notes
 
-- Queue status reports aggregate counts/current active player; it is not a full queue listing API.
 - Join rate limiting is in-memory (per process), not distributed.
 - Mock mode validates control flow but does not emulate physical machine timing perfectly.
 - Frontend is static JS/CSS without build tooling (intentional simplicity).

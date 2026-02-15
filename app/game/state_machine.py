@@ -197,9 +197,14 @@ class StateMachine:
                     "tries_used": self.current_try,
                 })
 
-        # Broadcast updated queue status
+        # Broadcast updated queue status with full entry list
         status = await self.queue.get_queue_status()
-        await self.ws.broadcast_queue_update(status)
+        entries = await self.queue.list_queue()
+        queue_entries = [
+            {"name": e["name"], "state": e["state"], "position": e["position"]}
+            for e in entries
+        ]
+        await self.ws.broadcast_queue_update(status, queue_entries)
 
         self.state = TurnState.IDLE
         self.active_entry_id = None
@@ -228,7 +233,13 @@ class StateMachine:
                 await self.queue.set_state(entry_id, "skipped")
                 self.state = TurnState.IDLE
                 self.active_entry_id = None
-                await self.ws.broadcast_queue_update(await self.queue.get_queue_status())
+                status = await self.queue.get_queue_status()
+                entries = await self.queue.list_queue()
+                queue_entries = [
+                    {"name": e["name"], "state": e["state"], "position": e["position"]}
+                    for e in entries
+                ]
+                await self.ws.broadcast_queue_update(status, queue_entries)
                 await self.advance_queue()
         except asyncio.CancelledError:
             pass

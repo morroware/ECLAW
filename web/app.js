@@ -30,6 +30,8 @@
   const currentPlayerDisplay = $("#current-player-display");
   const gameStateDisplay = $("#game-state-display");
   const timerDisplay = $("#timer-display");
+  const queueList = $("#queue-list");
+  const historyList = $("#history-list");
 
   // -- Initialization -------------------------------------------------------
 
@@ -45,6 +47,10 @@
 
   // Connect video stream
   initStream();
+
+  // Initial data fetches
+  fetchQueueList();
+  fetchHistory();
 
   // -- Status WebSocket (all viewers) ---------------------------------------
 
@@ -67,6 +73,10 @@
         if (msg.viewer_count != null) {
           viewerCount.textContent = `${msg.viewer_count} viewer${msg.viewer_count !== 1 ? "s" : ""}`;
         }
+        // Real-time queue list update from WebSocket
+        if (msg.entries) {
+          renderQueueList(msg.entries);
+        }
       }
 
       if (msg.type === "state_update") {
@@ -78,6 +88,8 @@
         setTimeout(() => {
           gameStateDisplay.textContent = "";
         }, 3000);
+        // Refresh history after a turn ends
+        fetchHistory();
       }
     };
 
@@ -94,7 +106,6 @@
     streamPlayer = new StreamPlayer(video, "/stream/cam");
     streamPlayer.connect().catch((err) => {
       console.warn("Stream not available:", err.message);
-      // Stream may not be available in dev mode — that's OK
     });
   }
 
@@ -110,13 +121,96 @@
         token = savedToken;
         switchToState(data.state, data);
       } else {
-        // Token expired or invalid
         localStorage.removeItem("eclaw_token");
         token = null;
       }
     } catch (e) {
       console.error("Session check failed:", e);
     }
+  }
+
+  // -- Queue List -----------------------------------------------------------
+
+  async function fetchQueueList() {
+    try {
+      const res = await fetch("/api/queue");
+      if (res.ok) {
+        const data = await res.json();
+        renderQueueList(data.entries);
+        queueLength.textContent = `Queue: ${data.total}`;
+        if (data.current_player) {
+          currentPlayerDisplay.textContent = `Playing: ${data.current_player}`;
+        }
+      }
+    } catch (e) {
+      // Ignore — server may not be ready
+    }
+  }
+
+  function renderQueueList(entries) {
+    if (!entries || entries.length === 0) {
+      queueList.innerHTML = '<li class="queue-empty">No one in the queue</li>';
+      return;
+    }
+
+    queueList.innerHTML = entries
+      .map((entry, i) => {
+        let stateLabel = "";
+        let stateClass = "";
+        if (entry.state === "active") {
+          stateLabel = "PLAYING";
+          stateClass = "state-active";
+        } else if (entry.state === "ready") {
+          stateLabel = "READY";
+          stateClass = "state-ready";
+        } else {
+          stateLabel = `#${i + 1}`;
+          stateClass = "state-waiting";
+        }
+
+        return `<li class="queue-entry ${stateClass}">
+          <span class="queue-name">${escapeHtml(entry.name)}</span>
+          <span class="queue-state">${stateLabel}</span>
+        </li>`;
+      })
+      .join("");
+  }
+
+  // -- Game History ---------------------------------------------------------
+
+  async function fetchHistory() {
+    try {
+      const res = await fetch("/api/history");
+      if (res.ok) {
+        const data = await res.json();
+        renderHistory(data.entries);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  function renderHistory(entries) {
+    if (!entries || entries.length === 0) {
+      historyList.innerHTML = '<p class="text-dim">No games yet</p>';
+      return;
+    }
+
+    historyList.innerHTML = entries
+      .map((entry) => {
+        const isWin = entry.result === "win";
+        const resultLabel = isWin ? "WIN" : entry.result.toUpperCase();
+        const resultClass = isWin ? "result-win" : "result-loss";
+        const tries = entry.tries_used != null ? `${entry.tries_used} tries` : "";
+        const timeAgo = entry.completed_at ? formatTimeAgo(entry.completed_at) : "";
+
+        return `<div class="history-entry">
+          <span class="history-result ${resultClass}">${resultLabel}</span>
+          <span class="history-name">${escapeHtml(entry.name)}</span>
+          <span class="history-meta">${tries}${timeAgo ? " · " + timeAgo : ""}</span>
+        </div>`;
+      })
+      .join("");
   }
 
   // -- Join Queue -----------------------------------------------------------
@@ -344,7 +438,7 @@
       case "waiting":
         waitingPanel.classList.remove("hidden");
         if (data) {
-          $("#wait-position").textContent = data.position || "—";
+          $("#wait-position").textContent = data.position || "--";
           if (data.estimated_wait_seconds) {
             const mins = Math.ceil(data.estimated_wait_seconds / 60);
             $("#wait-time").textContent = `~${mins} min`;
@@ -408,6 +502,24 @@
     return map[state] || state;
   }
 
+  function formatTimeAgo(isoStr) {
+    if (!isoStr) return "";
+    const now = Date.now();
+    const then = new Date(isoStr + (isoStr.endsWith("Z") ? "" : "Z")).getTime();
+    const diffS = Math.floor((now - then) / 1000);
+
+    if (diffS < 60) return "just now";
+    if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
+    if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
+    return `${Math.floor(diffS / 86400)}d ago`;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   function cleanup() {
     if (controlSocket) {
       controlSocket.disconnect();
@@ -427,19 +539,23 @@
     }
   }, 2000);
 
-  // -- Periodic Queue Status Refresh ----------------------------------------
+  // -- Periodic Queue + History Refresh -------------------------------------
   setInterval(async () => {
     try {
-      const res = await fetch("/api/queue/status");
+      const res = await fetch("/api/queue");
       if (res.ok) {
         const data = await res.json();
-        queueLength.textContent = `Queue: ${data.queue_length}`;
+        queueLength.textContent = `Queue: ${data.total}`;
         currentPlayerDisplay.textContent = data.current_player
           ? `Playing: ${data.current_player}`
           : "";
+        renderQueueList(data.entries);
       }
     } catch (e) {
       // Ignore
     }
   }, 5000);
+
+  // Refresh history less frequently
+  setInterval(fetchHistory, 15000);
 })();

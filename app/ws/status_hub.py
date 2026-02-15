@@ -40,8 +40,11 @@ class StatusHub:
     async def broadcast_turn_end(self, entry_id: str, result: str):
         await self.broadcast({"type": "turn_end", "entry_id": entry_id, "result": result})
 
-    async def broadcast_queue_update(self, status: dict):
-        await self.broadcast({"type": "queue_update", **status, "viewer_count": self.viewer_count})
+    async def broadcast_queue_update(self, status: dict, queue_entries: list[dict] | None = None):
+        msg = {"type": "queue_update", **status, "viewer_count": self.viewer_count}
+        if queue_entries is not None:
+            msg["entries"] = queue_entries
+        await self.broadcast(msg)
 
     async def notify_player_ready(self, entry_id: str):
         # Actual notification goes through ControlHandler.

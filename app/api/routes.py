@@ -38,6 +38,31 @@ class SessionResponse(BaseModel):
     current_try: int | None
 
 
+class QueueEntryResponse(BaseModel):
+    name: str
+    state: str
+    position: int | None
+    wait_since: str | None
+
+
+class QueueListResponse(BaseModel):
+    entries: list[QueueEntryResponse]
+    total: int
+    current_player: str | None
+    game_state: str | None
+
+
+class HistoryEntry(BaseModel):
+    name: str
+    result: str
+    tries_used: int | None
+    completed_at: str | None
+
+
+class HistoryResponse(BaseModel):
+    entries: list[HistoryEntry]
+
+
 class HealthResponse(BaseModel):
     status: str
     gpio_locked: bool
@@ -74,6 +99,15 @@ async def queue_join(body: JoinRequest, request: Request):
     # Kick off queue advancement
     await request.app.state.state_machine.advance_queue()
 
+    # Broadcast updated queue to all viewers
+    status = await qm.get_queue_status()
+    entries = await qm.list_queue()
+    queue_entries = [
+        {"name": e["name"], "state": e["state"], "position": e["position"]}
+        for e in entries
+    ]
+    await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
+
     est_wait = result["position"] * settings.turn_time_seconds
     return JoinResponse(
         token=result["token"],
@@ -87,10 +121,15 @@ async def queue_leave(request: Request, authorization: str = Header(...)):
     raw = authorization.removeprefix("Bearer ").strip()
     if not raw:
         raise HTTPException(401, "Missing token")
-    await request.app.state.queue_manager.leave(hash_token(raw))
-    await request.app.state.ws_hub.broadcast_queue_update(
-        await request.app.state.queue_manager.get_queue_status()
-    )
+    qm = request.app.state.queue_manager
+    await qm.leave(hash_token(raw))
+    status = await qm.get_queue_status()
+    entries = await qm.list_queue()
+    queue_entries = [
+        {"name": e["name"], "state": e["state"], "position": e["position"]}
+        for e in entries
+    ]
+    await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
     return {"ok": True}
 
 
@@ -117,6 +156,56 @@ async def session_me(request: Request, authorization: str = Header(...)):
             settings.tries_per_player - (sm.current_try if is_active else entry.get("tries_used", 0))
         ),
         current_try=sm.current_try if is_active else None,
+    )
+
+
+@router.get("/queue", response_model=QueueListResponse)
+async def queue_list(request: Request):
+    """Full queue listing — shows all waiting, ready, and active players."""
+    qm = request.app.state.queue_manager
+    sm = request.app.state.state_machine
+    entries = await qm.list_queue()
+
+    turn_time = settings.turn_time_seconds
+    result_entries = []
+    for i, entry in enumerate(entries):
+        # Estimate wait: active player = 0, others = position in line * turn time
+        result_entries.append(QueueEntryResponse(
+            name=entry["name"],
+            state=entry["state"],
+            position=entry["position"],
+            wait_since=entry["created_at"],
+        ))
+
+    current_player = None
+    for e in entries:
+        if e["state"] in ("active", "ready"):
+            current_player = e["name"]
+            break
+
+    return QueueListResponse(
+        entries=result_entries,
+        total=len(entries),
+        current_player=current_player,
+        game_state=sm.state.value,
+    )
+
+
+@router.get("/history", response_model=HistoryResponse)
+async def game_history(request: Request):
+    """Recent game results — shows the last completed turns."""
+    qm = request.app.state.queue_manager
+    results = await qm.get_recent_results(limit=20)
+    return HistoryResponse(
+        entries=[
+            HistoryEntry(
+                name=r["name"],
+                result=r["result"],
+                tries_used=r["tries_used"],
+                completed_at=r["completed_at"],
+            )
+            for r in results
+        ]
     )
 
 
