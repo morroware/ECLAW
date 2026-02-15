@@ -7,6 +7,8 @@ class ControlSocket {
     this.ws = null;
     this.reconnectDelay = 1000;
     this.latencyMs = 0;
+    this._pingSentAt = 0;
+    this._pingInterval = null;
     this.onStateChange = null;
     this.onReadyPrompt = null;
     this.onTurnEnd = null;
@@ -26,6 +28,9 @@ class ControlSocket {
       this.ws.send(JSON.stringify({ type: "auth", token: this.token }));
       this.reconnectDelay = 1000;
       if (this.onConnect) this.onConnect();
+      // Start periodic latency pings
+      clearInterval(this._pingInterval);
+      this._pingInterval = setInterval(() => this._sendPing(), 3000);
     };
 
     this.ws.onmessage = (event) => {
@@ -50,12 +55,11 @@ class ControlSocket {
         case "control_ack":
           if (this.onControlAck) this.onControlAck(msg);
           break;
-        case "latency_ping":
-          this.ws.send(JSON.stringify({
-            type: "latency_pong",
-            server_time: msg.server_time,
-          }));
-          this.latencyMs = Math.round((Date.now() / 1000 - msg.server_time) * 1000);
+        case "latency_pong":
+          if (this._pingSentAt > 0) {
+            this.latencyMs = Math.round(Date.now() - this._pingSentAt);
+            this._pingSentAt = 0;
+          }
           break;
       }
     };
@@ -84,8 +88,16 @@ class ControlSocket {
   drop() { this.send({ type: "drop" }); }
   readyConfirm() { this.send({ type: "ready_confirm" }); }
 
+  _sendPing() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this._pingSentAt = Date.now();
+      this.ws.send(JSON.stringify({ type: "latency_ping" }));
+    }
+  }
+
   disconnect() {
     this._shouldReconnect = false;
+    clearInterval(this._pingInterval);
     if (this.ws) {
       this.ws.close();
       this.ws = null;

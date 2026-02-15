@@ -31,6 +31,7 @@ class StateMachine:
         self._turn_timer: asyncio.Task | None = None
         self._paused = False
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._advance_lock = asyncio.Lock()
 
     # -- Public Interface ----------------------------------------------------
 
@@ -39,18 +40,19 @@ class StateMachine:
         if self._loop is None:
             self._loop = asyncio.get_running_loop()
 
-        if self.state != TurnState.IDLE:
-            return
-        if self._paused:
-            return
+        async with self._advance_lock:
+            if self.state != TurnState.IDLE:
+                return
+            if self._paused:
+                return
 
-        next_entry = await self.queue.peek_next_waiting()
-        if next_entry is None:
-            return
+            next_entry = await self.queue.peek_next_waiting()
+            if next_entry is None:
+                return
 
-        self.active_entry_id = next_entry["id"]
-        await self.queue.set_state(next_entry["id"], "ready")
-        await self._enter_state(TurnState.READY_PROMPT)
+            self.active_entry_id = next_entry["id"]
+            await self.queue.set_state(next_entry["id"], "ready")
+            await self._enter_state(TurnState.READY_PROMPT)
 
     async def handle_ready_confirm(self, entry_id: str):
         """Called when the prompted player confirms they are ready."""
@@ -214,6 +216,15 @@ class StateMachine:
             if self.state == TurnState.READY_PROMPT:
                 logger.info("Ready prompt timed out, skipping player")
                 entry_id = self.active_entry_id
+
+                # Notify the skipped player before clearing active_entry_id
+                if self.ctrl and entry_id:
+                    await self.ctrl.send_to_player(entry_id, {
+                        "type": "turn_end",
+                        "result": "skipped",
+                        "tries_used": 0,
+                    })
+
                 await self.queue.set_state(entry_id, "skipped")
                 self.state = TurnState.IDLE
                 self.active_entry_id = None
@@ -269,4 +280,5 @@ class StateMachine:
             "active_entry_id": self.active_entry_id,
             "current_try": self.current_try,
             "max_tries": self.settings.tries_per_player,
+            "try_move_seconds": self.settings.try_move_seconds,
         }

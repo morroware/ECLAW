@@ -16,26 +16,28 @@ class QueueManager:
         raw_token = secrets.token_urlsafe(32)
         token_h = hash_token(raw_token)
 
-        # Determine next position
-        async with db.execute(
-            "SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'"
-        ) as cur:
-            row = await cur.fetchone()
-            next_pos = (row[0] or 0) + 1
-
+        # Atomic position assignment: INSERT with subquery in a single statement
         await db.execute(
             """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
-               VALUES (?, ?, ?, ?, ?, 'waiting', ?)""",
-            (entry_id, token_h, name, email, ip, next_pos),
+               VALUES (?, ?, ?, ?, ?, 'waiting',
+                       COALESCE((SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'), 0) + 1)""",
+            (entry_id, token_h, name, email, ip),
         )
         await db.commit()
+
+        # Read back the assigned position
+        async with db.execute(
+            "SELECT position FROM queue_entries WHERE id = ?", (entry_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            next_pos = row[0]
 
         await log_event(entry_id, "join", json.dumps({"name": name, "position": next_pos}))
 
         return {"id": entry_id, "token": raw_token, "position": next_pos}
 
     async def leave(self, token_hash: str) -> bool:
-        """Cancel a waiting/ready player's queue entry."""
+        """Cancel a waiting/ready player's queue entry. Returns False if no matching entry."""
         db = await get_db()
         # Find entry first for logging
         async with db.execute(
@@ -45,6 +47,9 @@ class QueueManager:
             row = await cur.fetchone()
             entry_id = row[0] if row else None
 
+        if not entry_id:
+            return False
+
         await db.execute(
             "UPDATE queue_entries SET state = 'cancelled', completed_at = datetime('now') "
             "WHERE token_hash = ? AND state IN ('waiting', 'ready')",
@@ -52,9 +57,7 @@ class QueueManager:
         )
         await db.commit()
 
-        if entry_id:
-            await log_event(entry_id, "leave")
-
+        await log_event(entry_id, "leave")
         return True
 
     async def peek_next_waiting(self) -> dict | None:

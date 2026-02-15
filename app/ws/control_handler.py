@@ -87,6 +87,11 @@ class ControlHandler:
 
         msg_type = msg.get("type")
 
+        # Latency ping: respond immediately, bypass rate limit
+        if msg_type == "latency_ping":
+            await ws.send_text(json.dumps({"type": "latency_pong"}))
+            return
+
         # Rate limit check
         now = time.monotonic()
         last = self._last_command_time.get(entry_id, 0)
@@ -99,8 +104,6 @@ class ControlHandler:
         if entry_id != self.sm.active_entry_id:
             if msg_type == "ready_confirm":
                 await self.sm.handle_ready_confirm(entry_id)
-            elif msg_type == "latency_pong":
-                pass
             return
 
         # Control messages (active player only)
@@ -119,9 +122,6 @@ class ControlHandler:
 
         elif msg_type == "ready_confirm":
             await self.sm.handle_ready_confirm(entry_id)
-
-        elif msg_type == "latency_pong":
-            pass
 
     async def _disconnect_grace(self, entry_id: str, grace_seconds: int):
         """Wait for reconnection. If not reconnected, end turn."""
