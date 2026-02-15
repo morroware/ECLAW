@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ECLAW — UI Preview</title>
+  <style>
+    /* === Reset & Variables === */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #16161e;
+      --surface-2: #1e1e2a;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --border: #2d2d3d;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* === Preview Controls (not part of actual app) === */
+    #preview-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border-bottom: 2px solid var(--primary);
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #preview-bar h2 {
+      font-size: 0.85rem;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-right: 12px;
+      white-space: nowrap;
+    }
+
+    .view-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface-2);
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .view-btn:hover { border-color: var(--primary); color: var(--text); }
+    .view-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    #preview-label {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    /* === App Container === */
+    #app {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 8px;
+    }
+
+    /* === Header === */
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+    }
+
+    #header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: 2px;
+    }
+
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .status-dot.disconnected { background: var(--danger); }
+
+    /* === Video Stream === */
+    #stream-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    #stream-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%);
+      position: relative;
+    }
+
+    #stream-placeholder::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      border: 3px dashed var(--border);
+      border-radius: 50%;
+      animation: pulse-ring 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.05); }
+    }
+
+    .stream-label {
+      text-align: center;
+      z-index: 1;
+    }
+
+    .stream-label .cam-icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+
+    .stream-label p {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    #stream-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+      pointer-events: none;
+    }
+
+    #game-state-display {
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #timer-display {
+      font-size: 1.2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* === Panels === */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 8px;
+    }
+
+    .panel h2 {
+      font-size: 1.2rem;
+      margin-bottom: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    .text-dim {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+
+    /* === Queue Panel === */
+    #queue-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+
+    #queue-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+
+    #current-player-display {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    #queue-list-container { margin-top: 8px; }
+
+    #queue-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .queue-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--surface-2);
+      font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+
+    .queue-entry.state-active {
+      background: rgba(99, 102, 241, 0.15);
+      border-left: 3px solid var(--primary);
+    }
+
+    .queue-entry.state-ready {
+      background: rgba(34, 197, 94, 0.1);
+      border-left: 3px solid var(--success);
+    }
+
+    .queue-entry.state-waiting {
+      border-left: 3px solid transparent;
+    }
+
+    .queue-name { font-weight: 500; color: var(--text); }
+
+    .queue-state {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+    }
+
+    .state-active .queue-state { color: var(--primary); }
+    .state-ready .queue-state { color: var(--success); }
+
+    /* === Forms === */
+    #join-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    input[type="text"],
+    input[type="email"] {
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: var(--primary); }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    #join-btn { background: var(--primary); color: white; }
+    #join-btn:hover { background: var(--primary-hover); }
+
+    #leave-btn { background: var(--danger); color: white; margin-top: 8px; }
+
+    .big-btn {
+      padding: 16px 32px;
+      font-size: 1.3rem;
+      border-radius: 12px;
+    }
+
+    #ready-btn { background: var(--success); color: white; width: 100%; }
+    #ready-btn:hover { filter: brightness(1.1); }
+
+    .drop-btn {
+      background: var(--danger);
+      color: white;
+      width: 100%;
+      margin-top: 12px;
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 0.85rem;
+      margin-top: 6px;
+    }
+
+    /* === Controls === */
+    #controls-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 1rem;
+    }
+
+    #ctrl-timer {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--warning);
+      font-variant-numeric: tabular-nums;
+    }
+
+    #keyboard-hint {
+      text-align: center;
+      color: var(--text-dim);
+      padding: 16px;
+      font-size: 0.9rem;
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 3px 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      margin: 0 2px;
+    }
+
+    /* === D-Pad === */
+    #dpad-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #dpad {
+      display: grid;
+      grid-template-columns: 70px 70px 70px;
+      grid-template-rows: 70px 70px 70px;
+      gap: 4px;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .dpad-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface-2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 1.5rem;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .dpad-btn:active,
+    .dpad-btn.active {
+      background: var(--primary);
+      border-color: var(--primary-hover);
+    }
+
+    .dpad-center {
+      background: var(--surface);
+      border: none;
+      cursor: default;
+    }
+
+    .dpad-up    { grid-column: 2; grid-row: 1; }
+    .dpad-left  { grid-column: 1; grid-row: 2; }
+    .dpad-center{ grid-column: 2; grid-row: 2; }
+    .dpad-right { grid-column: 3; grid-row: 2; }
+    .dpad-down  { grid-column: 2; grid-row: 3; }
+
+    /* === Result Panel === */
+    #result-panel h2 {
+      font-size: 2rem;
+      text-align: center;
+    }
+
+    #result-panel .win { color: var(--success); }
+    #result-panel .loss { color: var(--danger); }
+
+    #result-message {
+      text-align: center;
+      margin: 12px 0;
+      color: var(--text-dim);
+    }
+
+    #play-again-btn { background: var(--primary); color: white; width: 100%; }
+
+    /* === Ready Timer === */
+    #ready-timer {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--warning);
+    }
+
+    /* === History Panel === */
+    #history-panel { border-color: var(--border); }
+
+    #history-panel h2 {
+      font-size: 1rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    #history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .history-entry {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .history-entry:last-child { border-bottom: none; }
+
+    .history-result {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      min-width: 36px;
+      height: 22px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .result-win {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .result-loss {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .history-name { flex: 1; font-weight: 500; color: var(--text); }
+
+    .history-meta {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+    }
+
+    /* === Responsive === */
+    .desktop-only { display: block; }
+    .mobile-only { display: none; }
+
+    @media (max-width: 600px) {
+      .desktop-only { display: none; }
+      .mobile-only { display: flex; }
+      #app { padding: 4px; }
+      .panel { padding: 14px; }
+      #header h1 { font-size: 1.2rem; }
+      #preview-bar { padding: 8px 12px; }
+      .view-btn { font-size: 0.7rem; padding: 4px 10px; }
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+      .desktop-only { display: none; }
+      .mobile-only { display: flex; }
+    }
+
+    /* === Animations for preview === */
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 4px rgba(99, 102, 241, 0.3); }
+      50% { box-shadow: 0 0 12px rgba(99, 102, 241, 0.6); }
+    }
+
+    .panel-highlight {
+      animation: glow-pulse 1.5s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Preview Navigation Bar -->
+  <div id="preview-bar">
+    <h2>UI Preview</h2>
+    <button class="view-btn active" onclick="showView('join')">Join Queue</button>
+    <button class="view-btn" onclick="showView('waiting')">Waiting</button>
+    <button class="view-btn" onclick="showView('ready')">Ready Prompt</button>
+    <button class="view-btn" onclick="showView('playing-desktop')">Playing (Desktop)</button>
+    <button class="view-btn" onclick="showView('playing-mobile')">Playing (Mobile)</button>
+    <button class="view-btn" onclick="showView('result-win')">Win Result</button>
+    <button class="view-btn" onclick="showView('result-loss')">Loss Result</button>
+    <span id="preview-label">Click buttons above to see each screen</span>
+  </div>
+
+  <div id="app">
+
+    <!-- Header -->
+    <header id="header">
+      <h1>ECLAW</h1>
+      <div id="status-bar">
+        <span id="connection-status" class="status-dot connected"></span>
+        <span id="viewer-count">12 viewers</span>
+        <span id="latency-display">24ms</span>
+      </div>
+    </header>
+
+    <!-- Video Stream Placeholder -->
+    <div id="stream-container">
+      <div id="stream-placeholder">
+        <div class="stream-label">
+          <div class="cam-icon">&#128247;</div>
+          <p>Live camera stream appears here</p>
+          <p style="font-size: 0.75rem; margin-top: 4px; opacity: 0.5">WebRTC via MediaMTX</p>
+        </div>
+      </div>
+      <div id="stream-overlay">
+        <div id="game-state-display">PLAYING</div>
+        <div id="try-display">Try 1/2</div>
+        <div id="timer-display">24s</div>
+      </div>
+    </div>
+
+    <!-- Queue Info Bar + Live Queue List -->
+    <div id="queue-panel">
+      <div id="queue-info">
+        <span id="queue-length">Queue: 4</span>
+        <span id="current-player-display">Playing: Sarah</span>
+      </div>
+      <div id="queue-list-container">
+        <ol id="queue-list">
+          <li class="queue-entry state-active">
+            <span class="queue-name">Sarah</span>
+            <span class="queue-state">PLAYING</span>
+          </li>
+          <li class="queue-entry state-waiting">
+            <span class="queue-name">Marcus</span>
+            <span class="queue-state">#2</span>
+          </li>
+          <li class="queue-entry state-waiting">
+            <span class="queue-name">Priya</span>
+            <span class="queue-state">#3</span>
+          </li>
+          <li class="queue-entry state-waiting">
+            <span class="queue-name">Jake</span>
+            <span class="queue-state">#4</span>
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- JOIN: Join Form (default view) -->
+    <div id="join-panel" class="panel">
+      <h2>Join the Queue</h2>
+      <form id="join-form" onsubmit="event.preventDefault(); showView('waiting');">
+        <input type="text" id="join-name" placeholder="Your name" value="">
+        <input type="email" id="join-email" placeholder="Email" value="">
+        <button type="submit" id="join-btn">Join Queue</button>
+      </form>
+      <p id="join-error" class="error"></p>
+    </div>
+
+    <!-- WAITING: In queue panel -->
+    <div id="waiting-panel" class="panel hidden">
+      <h2>You're in the Queue!</h2>
+      <p>Position: <strong id="wait-position">3</strong></p>
+      <p>Estimated wait: <strong id="wait-time">~5 min</strong></p>
+      <button id="leave-btn" onclick="showView('join')">Leave Queue</button>
+    </div>
+
+    <!-- READY: Ready prompt panel -->
+    <div id="ready-panel" class="panel hidden">
+      <h2>It's Your Turn!</h2>
+      <p>Press Ready to start playing</p>
+      <button id="ready-btn" class="big-btn" onclick="showView('playing-desktop')">READY</button>
+      <div id="ready-timer">12s</div>
+    </div>
+
+    <!-- PLAYING: Controls panel (Desktop) -->
+    <div id="controls-panel-desktop" class="panel hidden">
+      <div id="controls-info">
+        <span id="ctrl-try">Try 1/2</span>
+        <span id="ctrl-timer">24s</span>
+      </div>
+      <div id="keyboard-hint">
+        Use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or Arrow Keys to move &bull; <kbd>Space</kbd> to drop
+      </div>
+      <button class="big-btn drop-btn">DROP (Space)</button>
+    </div>
+
+    <!-- PLAYING: Controls panel (Mobile) -->
+    <div id="controls-panel-mobile" class="panel hidden">
+      <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:1rem;">
+        <span>Try 1/2</span>
+        <span style="font-size:1.3rem; font-weight:700; color:var(--warning);">24s</span>
+      </div>
+      <div id="dpad-container">
+        <div id="dpad">
+          <div class="dpad-btn dpad-up" data-dir="north">&#9650;</div>
+          <div class="dpad-btn dpad-left" data-dir="west">&#9664;</div>
+          <div class="dpad-btn dpad-center"></div>
+          <div class="dpad-btn dpad-right" data-dir="east">&#9654;</div>
+          <div class="dpad-btn dpad-down" data-dir="south">&#9660;</div>
+        </div>
+        <button class="big-btn drop-btn">DROP</button>
+      </div>
+    </div>
+
+    <!-- RESULT: Win -->
+    <div id="result-panel-win" class="panel hidden">
+      <h2 class="win" style="font-size:2rem; text-align:center;">YOU WON!</h2>
+      <p style="text-align:center; margin:12px 0; color:var(--text-dim);">Congratulations! You grabbed a prize!</p>
+      <button id="play-again-btn-win" style="background:var(--primary); color:white; width:100%;" onclick="showView('join')">Play Again</button>
+    </div>
+
+    <!-- RESULT: Loss -->
+    <div id="result-panel-loss" class="panel hidden">
+      <h2 class="loss" style="font-size:2rem; text-align:center;">No Luck</h2>
+      <p style="text-align:center; margin:12px 0; color:var(--text-dim);">Better luck next time!</p>
+      <button style="background:var(--primary); color:white; width:100%;" onclick="showView('join')">Play Again</button>
+    </div>
+
+    <!-- Recent Game History -->
+    <div id="history-panel" class="panel">
+      <h2>Recent Games</h2>
+      <div id="history-list">
+        <div class="history-entry">
+          <span class="history-result result-win">WIN</span>
+          <span class="history-name">Alex</span>
+          <span class="history-meta">1 tries &middot; 2m ago</span>
+        </div>
+        <div class="history-entry">
+          <span class="history-result result-loss">LOSS</span>
+          <span class="history-name">Jordan</span>
+          <span class="history-meta">2 tries &middot; 8m ago</span>
+        </div>
+        <div class="history-entry">
+          <span class="history-result result-loss">LOSS</span>
+          <span class="history-name">Taylor</span>
+          <span class="history-meta">2 tries &middot; 15m ago</span>
+        </div>
+        <div class="history-entry">
+          <span class="history-result result-win">WIN</span>
+          <span class="history-name">Casey</span>
+          <span class="history-meta">2 tries &middot; 22m ago</span>
+        </div>
+        <div class="history-entry">
+          <span class="history-result result-loss">LOSS</span>
+          <span class="history-name">Morgan</span>
+          <span class="history-meta">2 tries &middot; 31m ago</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const allPanels = [
+      'join-panel',
+      'waiting-panel',
+      'ready-panel',
+      'controls-panel-desktop',
+      'controls-panel-mobile',
+      'result-panel-win',
+      'result-panel-loss',
+    ];
+
+    function showView(view) {
+      // Hide all interactive panels
+      allPanels.forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+
+      // Update button states
+      document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+      const buttons = document.querySelectorAll('.view-btn');
+      const viewMap = {
+        'join': 0,
+        'waiting': 1,
+        'ready': 2,
+        'playing-desktop': 3,
+        'playing-mobile': 4,
+        'result-win': 5,
+        'result-loss': 6,
+      };
+      if (viewMap[view] !== undefined) {
+        buttons[viewMap[view]].classList.add('active');
+      }
+
+      // Update overlay based on view
+      const stateDisplay = document.getElementById('game-state-display');
+      const timerDisplay = document.getElementById('timer-display');
+      const tryDisplay = document.getElementById('try-display');
+      const queueEntries = document.querySelectorAll('.queue-entry');
+
+      // Show the selected panel
+      let panelId;
+      switch (view) {
+        case 'join':
+          panelId = 'join-panel';
+          stateDisplay.textContent = 'Waiting for Player';
+          timerDisplay.textContent = '';
+          tryDisplay.textContent = '';
+          break;
+
+        case 'waiting':
+          panelId = 'waiting-panel';
+          stateDisplay.textContent = 'PLAYING';
+          timerDisplay.textContent = '18s';
+          tryDisplay.textContent = 'Try 1/2';
+          break;
+
+        case 'ready':
+          panelId = 'ready-panel';
+          stateDisplay.textContent = 'Player Ready?';
+          timerDisplay.textContent = '';
+          tryDisplay.textContent = '';
+          // Update queue to show this player as ready
+          break;
+
+        case 'playing-desktop':
+          panelId = 'controls-panel-desktop';
+          stateDisplay.textContent = 'PLAYING';
+          timerDisplay.textContent = '24s';
+          tryDisplay.textContent = 'Try 1/2';
+          break;
+
+        case 'playing-mobile':
+          panelId = 'controls-panel-mobile';
+          stateDisplay.textContent = 'PLAYING';
+          timerDisplay.textContent = '24s';
+          tryDisplay.textContent = 'Try 1/2';
+          break;
+
+        case 'result-win':
+          panelId = 'result-panel-win';
+          stateDisplay.textContent = 'WIN!';
+          stateDisplay.style.color = 'var(--success)';
+          timerDisplay.textContent = '';
+          tryDisplay.textContent = '';
+          setTimeout(() => stateDisplay.style.color = '', 0);
+          break;
+
+        case 'result-loss':
+          panelId = 'result-panel-loss';
+          stateDisplay.textContent = 'LOSS';
+          stateDisplay.style.color = 'var(--danger)';
+          timerDisplay.textContent = '';
+          tryDisplay.textContent = '';
+          setTimeout(() => stateDisplay.style.color = '', 0);
+          break;
+      }
+
+      if (panelId) {
+        const panel = document.getElementById(panelId);
+        panel.classList.remove('hidden');
+        panel.classList.add('panel-highlight');
+        setTimeout(() => panel.classList.remove('panel-highlight'), 1500);
+      }
+
+      // Update preview label
+      const labels = {
+        'join': 'New visitor sees the join form — enter name + email to get in line',
+        'waiting': 'Player has joined and is waiting for their turn',
+        'ready': 'It\'s the player\'s turn! They have 15 seconds to confirm',
+        'playing-desktop': 'Desktop controls: WASD/Arrows to move, Space to drop the claw',
+        'playing-mobile': 'Mobile controls: Touch D-pad to move, DROP button to release',
+        'result-win': 'Player grabbed a prize! Celebration screen shown',
+        'result-loss': 'No prize this time — player can rejoin the queue',
+      };
+      document.getElementById('preview-label').textContent = labels[view] || '';
+    }
+
+    // D-pad button press simulation
+    document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        btn.classList.add('active');
+      });
+      btn.addEventListener('pointerup', () => {
+        btn.classList.remove('active');
+      });
+      btn.addEventListener('pointerleave', () => {
+        btn.classList.remove('active');
+      });
+    });
+  </script>
+
+</body>
+</html>
