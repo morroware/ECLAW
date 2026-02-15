@@ -22,6 +22,7 @@ class ControlHandler:
         self.settings = settings
         self._player_ws: dict[str, WebSocket] = {}  # entry_id -> ws
         self._last_command_time: dict[str, float] = {}  # entry_id -> monotonic
+        self._grace_tasks: dict[str, asyncio.Task] = {}  # entry_id -> grace period task
 
     async def handle_connection(self, ws: WebSocket):
         """Handle a full control WebSocket lifecycle."""
@@ -44,6 +45,12 @@ class ControlHandler:
                 return
 
             entry_id = entry["id"]
+
+            # Cancel any active grace period for this player (they reconnected)
+            grace = self._grace_tasks.pop(entry_id, None)
+            if grace:
+                grace.cancel()
+                logger.info(f"Player {entry_id} reconnected, cancelled grace period")
 
             # Handle duplicate tabs: close previous connection
             if entry_id in self._player_ws:
@@ -71,13 +78,17 @@ class ControlHandler:
             logger.error(f"Control WS error for {entry_id}: {e}")
         finally:
             if entry_id:
-                self._player_ws.pop(entry_id, None)
-                if entry_id == self.sm.active_entry_id:
-                    await self.sm.handle_disconnect(entry_id)
-                    # Start grace period for active player
-                    asyncio.create_task(
-                        self._disconnect_grace(entry_id, self.settings.queue_grace_period_seconds)
-                    )
+                # Only clean up if this WS is still the registered one
+                # (a new connection may have already replaced us)
+                if self._player_ws.get(entry_id) is ws:
+                    self._player_ws.pop(entry_id, None)
+                    if entry_id == self.sm.active_entry_id:
+                        await self.sm.handle_disconnect(entry_id)
+                        # Start grace period for active player
+                        task = asyncio.create_task(
+                            self._disconnect_grace(entry_id, self.settings.queue_grace_period_seconds)
+                        )
+                        self._grace_tasks[entry_id] = task
 
     async def _handle_message(self, entry_id: str, raw: str, ws: WebSocket):
         try:
@@ -92,13 +103,15 @@ class ControlHandler:
             await ws.send_text(json.dumps({"type": "latency_pong"}))
             return
 
-        # Rate limit check
-        now = time.monotonic()
-        last = self._last_command_time.get(entry_id, 0)
-        min_interval = 1.0 / self.settings.command_rate_limit_hz
-        if now - last < min_interval:
-            return  # Silently drop
-        self._last_command_time[entry_id] = now
+        # Rate limit only keydown events — keyup, drop, and ready_confirm
+        # must always pass through to avoid stuck directions or missed actions
+        if msg_type == "keydown":
+            now = time.monotonic()
+            last = self._last_command_time.get(entry_id, 0)
+            min_interval = 1.0 / self.settings.command_rate_limit_hz
+            if now - last < min_interval:
+                return  # Silently drop
+            self._last_command_time[entry_id] = now
 
         # Non-active player actions
         if entry_id != self.sm.active_entry_id:
@@ -125,10 +138,15 @@ class ControlHandler:
 
     async def _disconnect_grace(self, entry_id: str, grace_seconds: int):
         """Wait for reconnection. If not reconnected, end turn."""
-        await asyncio.sleep(grace_seconds)
-        if entry_id not in self._player_ws and entry_id == self.sm.active_entry_id:
-            logger.info(f"Grace period expired for {entry_id}")
-            await self.sm.handle_disconnect_timeout(entry_id)
+        try:
+            await asyncio.sleep(grace_seconds)
+            if entry_id not in self._player_ws and entry_id == self.sm.active_entry_id:
+                logger.info(f"Grace period expired for {entry_id}")
+                await self.sm.handle_disconnect_timeout(entry_id)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._grace_tasks.pop(entry_id, None)
 
     async def send_to_player(self, entry_id: str, message: dict):
         """Send a message to a specific player."""
