@@ -30,11 +30,15 @@ class StateMachine:
         self._state_timer: asyncio.Task | None = None
         self._turn_timer: asyncio.Task | None = None
         self._paused = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # -- Public Interface ----------------------------------------------------
 
     async def advance_queue(self):
         """Called when queue changes or a turn ends. Starts next player if any."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         if self.state != TurnState.IDLE:
             return
         if self._paused:
@@ -253,11 +257,11 @@ class StateMachine:
 
     def _win_bridge(self):
         """Called from gpiozero thread. Bridges into async event loop."""
-        try:
-            loop = asyncio.get_event_loop()
-            loop.call_soon_threadsafe(asyncio.create_task, self.handle_win())
-        except RuntimeError:
+        if self._loop is None or self._loop.is_closed():
             logger.error("Failed to bridge win callback to event loop")
+            return
+
+        self._loop.call_soon_threadsafe(asyncio.create_task, self.handle_win())
 
     def _build_state_payload(self) -> dict:
         return {
