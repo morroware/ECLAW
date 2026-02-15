@@ -7,6 +7,7 @@ without real GPIO hardware.
 
 import asyncio
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -89,6 +90,7 @@ class GPIOController:
             OutputDevice = MockOutputDevice
             InputDevice = MockInputDevice
         else:
+            os.environ.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
             from gpiozero import DigitalInputDevice, OutputDevice as RealOutputDevice
             OutputDevice = RealOutputDevice
             InputDevice = DigitalInputDevice

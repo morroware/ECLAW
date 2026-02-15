@@ -45,6 +45,9 @@ sudo cp -r "$SCRIPT_DIR/watchdog" /opt/claw/
 sudo cp -r "$SCRIPT_DIR/web" /opt/claw/
 sudo cp "$SCRIPT_DIR/requirements.txt" /opt/claw/
 sudo cp "$SCRIPT_DIR/.env" /opt/claw/
+if ! grep -q "^GPIOZERO_PIN_FACTORY=" /opt/claw/.env; then
+  echo "GPIOZERO_PIN_FACTORY=lgpio" | sudo tee -a /opt/claw/.env >/dev/null
+fi
 sudo chown -R claw:claw /opt/claw
 
 # --- Python venv ---

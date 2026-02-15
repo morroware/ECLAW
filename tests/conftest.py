@@ -7,7 +7,6 @@ os.environ["MOCK_GPIO"] = "true"
 os.environ["GPIOZERO_PIN_FACTORY"] = "mock"
 
 import pytest
-import pytest_asyncio
 
 from app.config import Settings
 
