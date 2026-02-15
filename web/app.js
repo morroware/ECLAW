@@ -539,23 +539,8 @@
     }
   }, 2000);
 
-  // -- Periodic Queue + History Refresh -------------------------------------
-  setInterval(async () => {
-    try {
-      const res = await fetch("/api/queue");
-      if (res.ok) {
-        const data = await res.json();
-        queueLength.textContent = `Queue: ${data.total}`;
-        currentPlayerDisplay.textContent = data.current_player
-          ? `Playing: ${data.current_player}`
-          : "";
-        renderQueueList(data.entries);
-      }
-    } catch (e) {
-      // Ignore
-    }
-  }, 5000);
-
-  // Refresh history less frequently
+  // -- Periodic History Refresh ---------------------------------------------
+  // Queue updates are handled in real-time by the status WebSocket.
+  // Only history needs a periodic fallback since it's not pushed on every change.
   setInterval(fetchHistory, 15000);
 })();

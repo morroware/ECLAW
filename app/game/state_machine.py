@@ -283,7 +283,7 @@ class StateMachine:
             logger.error("Failed to bridge win callback to event loop")
             return
 
-        self._loop.call_soon_threadsafe(asyncio.create_task, self.handle_win())
+        asyncio.run_coroutine_threadsafe(self.handle_win(), self._loop)
 
     def _build_state_payload(self) -> dict:
         return {
