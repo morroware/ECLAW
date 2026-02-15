@@ -7,6 +7,7 @@
 #   ./install.sh          Interactive mode (asks what you want)
 #   ./install.sh dev      Set up local development environment
 #   ./install.sh pi       Full Pi 5 production deployment
+#   ./install.sh demo     Pi 5 PoC demo setup (short timers)
 #   ./install.sh test     Install deps and run test suite
 #
 set -euo pipefail
@@ -163,6 +164,32 @@ setup_pi() {
     exec bash "$SCRIPT_DIR/scripts/setup_pi.sh"
 }
 
+setup_demo() {
+    echo ""
+    echo -e "${BOLD}========================================${NC}"
+    echo -e "${BOLD}  ECLAW — Pi 5 PoC Demo Setup${NC}"
+    echo -e "${BOLD}========================================${NC}"
+    echo ""
+
+    # Check we're on a Pi
+    if [ ! -f /proc/device-tree/model ]; then
+        warn "This doesn't appear to be a Raspberry Pi"
+        echo -n "  Continue anyway? [y/N] "
+        read -r answer
+        if [[ ! "$answer" =~ ^[Yy] ]]; then
+            echo "Aborted."
+            exit 0
+        fi
+    else
+        MODEL=$(tr -d '\0' < /proc/device-tree/model)
+        info "Detected: $MODEL"
+    fi
+
+    # Delegate to the Pi setup script in demo mode
+    info "Running Pi 5 demo deployment..."
+    exec bash "$SCRIPT_DIR/scripts/setup_pi.sh" --demo
+}
+
 # ---- Test Only -------------------------------------------------------------
 
 setup_test() {
@@ -198,18 +225,22 @@ interactive_menu() {
     echo "            Installs system packages, MediaMTX, nginx,"
     echo "            systemd services. Requires Pi 5 + sudo."
     echo ""
-    echo "  3) ${BLUE}test${NC}  — Install dependencies and run tests"
+    echo "  3) ${YELLOW}demo${NC}  — Pi 5 PoC demo setup (short timers)"
+    echo "            Same as pi, but with faster demo timers."
+    echo ""
+    echo "  4) ${BLUE}test${NC}  — Install dependencies and run tests"
     echo "            Quick validation that everything works."
     echo ""
-    echo -n "  Choose [1/2/3]: "
+    echo -n "  Choose [1/2/3/4]: "
     read -r choice
 
     case "$choice" in
         1|dev)  setup_dev ;;
         2|pi)   setup_pi ;;
-        3|test) setup_test ;;
+        3|demo) setup_demo ;;
+        4|test) setup_test ;;
         *)
-            echo "  Invalid choice. Usage: ./install.sh [dev|pi|test]"
+            echo "  Invalid choice. Usage: ./install.sh [dev|pi|demo|test]"
             exit 1
             ;;
     esac
@@ -220,12 +251,14 @@ interactive_menu() {
 case "${1:-}" in
     dev)        setup_dev ;;
     pi)         setup_pi ;;
+    demo)       setup_demo ;;
     test)       setup_test ;;
     --help|-h)
-        echo "Usage: ./install.sh [dev|pi|test]"
+        echo "Usage: ./install.sh [dev|pi|demo|test]"
         echo ""
         echo "  dev   Set up local development environment"
         echo "  pi    Full Pi 5 production deployment"
+        echo "  demo  Pi 5 PoC demo setup (short timers)"
         echo "  test  Install deps and run test suite"
         echo ""
         echo "Run without arguments for interactive mode."
@@ -233,7 +266,7 @@ case "${1:-}" in
     "")         interactive_menu ;;
     *)
         echo "Unknown option: $1"
-        echo "Usage: ./install.sh [dev|pi|test]"
+        echo "Usage: ./install.sh [dev|pi|demo|test]"
         exit 1
         ;;
 esac
