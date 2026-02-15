@@ -89,12 +89,15 @@ def check_rate_limit(key: str, max_per_hour: int):
 
 @router.post("/queue/join", response_model=JoinResponse)
 async def queue_join(body: JoinRequest, request: Request):
+    normalized_name = body.name.strip()
+    normalized_email = body.email.strip().lower()
+
     ip = request.client.host if request.client else "unknown"
     check_rate_limit(f"ip:{ip}", 5)
-    check_rate_limit(f"email:{body.email}", 3)
+    check_rate_limit(f"email:{normalized_email}", 3)
 
     qm = request.app.state.queue_manager
-    result = await qm.join(body.name.strip(), body.email.strip(), ip)
+    result = await qm.join(normalized_name, normalized_email, ip)
 
     # Kick off queue advancement
     await request.app.state.state_machine.advance_queue()
