@@ -1,7 +1,7 @@
 # ECLAW — Common development and operations commands
 # Run 'make help' to see available targets
 
-.PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check
+.PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check audit-internet
 
 VENV     := venv/bin
 PYTHON   := $(VENV)/python
@@ -111,3 +111,7 @@ clean-all: clean ## Remove venv and all generated files
 db-reset: ## Reset the database (deletes all data)
 	rm -f data/claw.db data/claw.db-wal data/claw.db-shm
 	@echo "Database deleted. It will be recreated on next server start."
+
+.PHONY: audit-internet
+audit-internet: ## Run offline internet-readiness checks
+	./scripts/internet_readiness_audit.sh
