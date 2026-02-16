@@ -1,6 +1,7 @@
 """Public REST API endpoints."""
 
 import asyncio
+import logging
 import time
 from collections import defaultdict
 
@@ -76,6 +77,7 @@ class HealthResponse(BaseModel):
 # -- Rate Limiting (in-memory) -----------------------------------------------
 
 _join_limits: dict[str, list[float]] = defaultdict(list)
+logger = logging.getLogger("api.routes")
 
 
 def check_rate_limit(key: str, max_per_hour: int):
@@ -87,6 +89,19 @@ def check_rate_limit(key: str, max_per_hour: int):
 
 
 # -- Endpoints ---------------------------------------------------------------
+
+def _track_background_task(request: Request, task: asyncio.Task):
+    tasks = request.app.state.background_tasks
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+
+
+async def _advance_queue_safe(request: Request):
+    try:
+        await request.app.state.state_machine.advance_queue()
+    except Exception:
+        logger.exception("Background advance_queue task failed")
+
 
 @router.post("/queue/join", response_model=JoinResponse)
 async def queue_join(body: JoinRequest, request: Request):
@@ -113,7 +128,8 @@ async def queue_join(body: JoinRequest, request: Request):
 
     # Advance queue in background so the HTTP response returns immediately,
     # giving the client time to establish the control WebSocket first.
-    asyncio.create_task(request.app.state.state_machine.advance_queue())
+    task = asyncio.create_task(_advance_queue_safe(request))
+    _track_background_task(request, task)
 
     return JoinResponse(
         token=result["token"],
@@ -174,9 +190,8 @@ async def queue_list(request: Request):
     sm = request.app.state.state_machine
     entries = await qm.list_queue()
 
-    turn_time = settings.turn_time_seconds
     result_entries = []
-    for i, entry in enumerate(entries):
+    for entry in entries:
         # Estimate wait: active player = 0, others = position in line * turn time
         result_entries.append(QueueEntryResponse(
             name=entry["name"],
