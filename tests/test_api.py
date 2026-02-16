@@ -162,6 +162,12 @@ async def test_admin_dashboard(api_client):
 
 @pytest.mark.anyio
 async def test_join_rate_limit_normalizes_email(api_client):
+    import time
+
+    # Pre-fill the rate limiter to be 2 below the 15/hour email limit.
+    # This way the 3 case-insensitive variants below will push it over.
+    _join_limits["email:demo@example.com"] = [time.time()] * 12
+
     email_variants = [
         "Demo@Example.com",
         " demo@example.com ",
@@ -175,6 +181,7 @@ async def test_join_rate_limit_normalizes_email(api_client):
         )
         assert res.status_code == 200
 
+    # 12 pre-filled + 3 joins = 15 total; next should be blocked
     blocked = await api_client.post(
         "/api/queue/join",
         json={"name": "Player3", "email": "demo@example.com"},
@@ -201,3 +208,13 @@ async def test_join_validation(api_client):
         },
     )
     assert res.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_leave_with_invalid_token(api_client):
+    """Leaving with a bogus token should return 404."""
+    res = await api_client.delete(
+        "/api/queue/leave",
+        headers={"Authorization": "Bearer bogus-token-12345"},
+    )
+    assert res.status_code == 404
