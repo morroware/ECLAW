@@ -275,23 +275,12 @@
     }
   });
 
-  // -- Drop Buttons (hold to drop, release to stop) ------------------------
+  // -- Drop Buttons (single click to drop) ----------------------------------
 
   function setupDropButton(btn) {
-    btn.addEventListener("pointerdown", (e) => {
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
-      btn.setPointerCapture(e.pointerId);
       if (controlSocket) controlSocket.dropStart();
-    });
-    btn.addEventListener("pointerup", (e) => {
-      e.preventDefault();
-      if (controlSocket) controlSocket.dropStop();
-    });
-    btn.addEventListener("pointercancel", () => {
-      if (controlSocket) controlSocket.dropStop();
-    });
-    btn.addEventListener("pointerleave", () => {
-      if (controlSocket) controlSocket.dropStop();
     });
     btn.style.touchAction = "none";
   }
