@@ -92,6 +92,8 @@ class ControlHandler:
                         self._grace_tasks[entry_id] = task
 
     async def _handle_message(self, entry_id: str, raw: str, ws: WebSocket):
+        if len(raw) > 1024:
+            return  # Reject oversized messages
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
@@ -129,7 +131,8 @@ class ControlHandler:
                 }))
 
         elif msg_type == "keyup" and msg.get("key") in VALID_DIRECTIONS:
-            await self.gpio.direction_off(msg["key"])
+            if self.sm.state.value == "moving":
+                await self.gpio.direction_off(msg["key"])
 
         elif msg_type == "drop_start":
             await self.sm.handle_drop_press(entry_id)

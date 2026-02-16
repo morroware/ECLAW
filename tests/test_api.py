@@ -21,6 +21,8 @@ async def api_client(tmp_path):
     settings.database_path = db_path
     # Reset the database singleton so a fresh DB is created
     db_module._db = None
+    db_module._db_lock = None
+    db_module._write_lock = None
     _join_limits.clear()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)

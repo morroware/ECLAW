@@ -1,8 +1,13 @@
 """Configuration via Pydantic Settings, loaded from .env file."""
 
+import logging
 import os
 from functools import cached_property
 from pydantic_settings import BaseSettings
+
+_cfg_logger = logging.getLogger("config")
+
+_INSECURE_KEYS = {"changeme", "demo-admin-key", ""}
 
 
 class Settings(BaseSettings):
@@ -58,6 +63,9 @@ class Settings(BaseSettings):
     # Mock mode: set to true when running without real GPIO hardware
     mock_gpio: bool = False
 
+    # DB maintenance: hours to keep completed entries before pruning
+    db_retention_hours: int = 48
+
     model_config = {
         "env_file": os.environ.get("ECLAW_ENV_FILE", ".env"),
         "env_file_encoding": "utf-8",
@@ -68,6 +76,15 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
         return origins or ["http://localhost", "http://127.0.0.1"]
+
+    def warn_insecure_defaults(self):
+        """Log warnings about insecure defaults. Called once at startup."""
+        if self.admin_api_key in _INSECURE_KEYS:
+            _cfg_logger.warning(
+                "ADMIN_API_KEY is set to an insecure default ('%s'). "
+                "Change it before exposing to the internet!",
+                self.admin_api_key,
+            )
 
 
 settings = Settings()

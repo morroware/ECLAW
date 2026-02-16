@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import time
 from collections import defaultdict
 
@@ -12,6 +13,9 @@ from app.config import settings
 from app.database import hash_token
 
 router = APIRouter(prefix="/api")
+
+# Strip HTML-significant characters from player names to prevent stored XSS
+_NAME_UNSAFE = re.compile(r"[<>&\"']")
 
 
 # -- Models ------------------------------------------------------------------
@@ -77,14 +81,31 @@ class HealthResponse(BaseModel):
 # -- Rate Limiting (in-memory) -----------------------------------------------
 
 _join_limits: dict[str, list[float]] = defaultdict(list)
+_last_rate_limit_sweep: float = 0.0
 logger = logging.getLogger("api.routes")
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract real client IP, respecting X-Forwarded-For behind a reverse proxy."""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def check_rate_limit(key: str, max_per_hour: int):
+    global _last_rate_limit_sweep
     now = time.time()
+
+    # Periodic sweep of stale entries to prevent unbounded memory growth
+    if now - _last_rate_limit_sweep > 600:  # Every 10 minutes
+        _last_rate_limit_sweep = now
+        stale = [k for k, v in _join_limits.items() if all(now - t >= 3600 for t in v)]
+        for k in stale:
+            del _join_limits[k]
+
     recent = [t for t in _join_limits[key] if now - t < 3600]
     if not recent:
-        # Remove empty entries to prevent unbounded dict growth
         _join_limits.pop(key, None)
     else:
         _join_limits[key] = recent
@@ -110,10 +131,12 @@ async def _advance_queue_safe(request: Request):
 
 @router.post("/queue/join", response_model=JoinResponse)
 async def queue_join(body: JoinRequest, request: Request):
-    normalized_name = body.name.strip()
+    normalized_name = _NAME_UNSAFE.sub("", body.name.strip())
+    if len(normalized_name) < 2:
+        raise HTTPException(400, "Name must be at least 2 characters (no HTML allowed)")
     normalized_email = body.email.strip().lower()
 
-    ip = request.client.host if request.client else "unknown"
+    ip = _get_client_ip(request)
     check_rate_limit(f"ip:{ip}", 30)
     check_rate_limit(f"email:{normalized_email}", 15)
 

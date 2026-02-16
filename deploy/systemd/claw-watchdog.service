@@ -1,15 +1,18 @@
 [Unit]
 Description=Claw Machine GPIO Watchdog
 After=claw-server.service
+BindsTo=claw-server.service
 
 [Service]
 Type=exec
+WorkingDirectory=/opt/claw
 EnvironmentFile=/opt/claw/.env
 ExecStart=/opt/claw/venv/bin/python /opt/claw/watchdog/main.py
 Restart=always
 RestartSec=1
 User=claw
 SupplementaryGroups=gpio
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
