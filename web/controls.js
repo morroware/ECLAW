@@ -34,7 +34,9 @@ class ControlSocket {
     };
 
     this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+      let msg;
+      try { msg = JSON.parse(event.data); }
+      catch (e) { console.warn("Bad control WS message:", e); return; }
 
       switch (msg.type) {
         case "auth_ok":

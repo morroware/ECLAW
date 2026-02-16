@@ -9,13 +9,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketDisconnect
 
 from app.api.admin import admin_router
 from app.api.routes import router as api_router
 from app.api.stream import router as stream_router
 from app.camera import Camera
 from app.config import settings
-from app.database import close_db, get_db
+from app.database import close_db, get_db, prune_old_entries
 from app.game.queue_manager import QueueManager
 from app.game.state_machine import StateMachine
 from app.gpio.controller import GPIOController
@@ -29,10 +30,21 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
+async def _periodic_db_prune(interval_seconds: int = 3600):
+    """Background task that prunes old DB entries periodically."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            await prune_old_entries(settings.db_retention_hours)
+        except Exception:
+            logger.exception("Periodic DB prune failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     logger.info("Starting claw machine server")
+    settings.warn_insecure_defaults()
     app.state.start_time = time.time()
     app.state.background_tasks = set()
 
@@ -68,6 +80,11 @@ async def lifespan(app: FastAPI):
     app.state.state_machine = sm
     app.state.control_handler = ctrl
 
+    # Start periodic DB cleanup task
+    prune_task = asyncio.create_task(_periodic_db_prune())
+    app.state.background_tasks.add(prune_task)
+    prune_task.add_done_callback(app.state.background_tasks.discard)
+
     # Resume queue if entries exist
     await sm.advance_queue()
 
@@ -92,7 +109,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ECLAW Remote Claw Machine",
     lifespan=lifespan,
-    docs_url="/api/docs",
+    docs_url="/api/docs" if settings.mock_gpio else None,
     redoc_url=None,
 )
 
@@ -114,11 +131,16 @@ app.include_router(stream_router)
 @app.websocket("/ws/status")
 async def ws_status(ws: WebSocket):
     hub = app.state.ws_hub
-    await hub.connect(ws)
+    connected = await hub.connect(ws)
+    if not connected:
+        return
     try:
         while True:
             await ws.receive_text()  # Keep alive; ignore messages
-    except Exception:
+    except WebSocketDisconnect:
+        hub.disconnect(ws)
+    except Exception as e:
+        logger.warning("Status WS error: %s", e)
         hub.disconnect(ws)
 
 

@@ -9,14 +9,23 @@ from starlette.websockets import WebSocketState
 logger = logging.getLogger("ws.status")
 
 
+_MAX_STATUS_VIEWERS = 500
+
+
 class StatusHub:
     def __init__(self):
         self._clients: set[WebSocket] = set()
 
-    async def connect(self, ws: WebSocket):
+    async def connect(self, ws: WebSocket) -> bool:
+        """Accept a viewer connection. Returns False if limit reached."""
+        if len(self._clients) >= _MAX_STATUS_VIEWERS:
+            await ws.accept()
+            await ws.close(1013, "Too many viewers")
+            return False
         await ws.accept()
         self._clients.add(ws)
         logger.info(f"Status viewer connected ({len(self._clients)} total)")
+        return True
 
     def disconnect(self, ws: WebSocket):
         self._clients.discard(ws)

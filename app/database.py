@@ -1,32 +1,57 @@
 """SQLite database layer with async access and auto-migration."""
 
+import asyncio
 import hashlib
+import logging
 import os
 
 import aiosqlite
 
 from app.config import settings
 
+logger = logging.getLogger("database")
+
 _db: aiosqlite.Connection | None = None
+_db_lock: asyncio.Lock | None = None
+_write_lock: asyncio.Lock | None = None
+
+
+def _ensure_locks():
+    """Lazily create locks so they bind to the current event loop."""
+    global _db_lock, _write_lock
+    if _db_lock is None:
+        _db_lock = asyncio.Lock()
+    if _write_lock is None:
+        _write_lock = asyncio.Lock()
 
 
 async def get_db() -> aiosqlite.Connection:
     global _db
-    if _db is None:
-        os.makedirs(os.path.dirname(os.path.abspath(settings.database_path)), exist_ok=True)
-        _db = await aiosqlite.connect(settings.database_path)
-        _db.row_factory = aiosqlite.Row
-        await _db.execute("PRAGMA journal_mode=WAL")
-        await _db.execute("PRAGMA foreign_keys=ON")
-        await _run_migrations(_db)
+    _ensure_locks()
+    async with _db_lock:
+        if _db is None:
+            os.makedirs(os.path.dirname(os.path.abspath(settings.database_path)), exist_ok=True)
+            _db = await aiosqlite.connect(settings.database_path)
+            _db.row_factory = aiosqlite.Row
+            await _db.execute("PRAGMA journal_mode=WAL")
+            await _db.execute("PRAGMA foreign_keys=ON")
+            await _db.execute("PRAGMA busy_timeout=5000")
+            await _db.execute("PRAGMA synchronous=NORMAL")
+            await _run_migrations(_db)
     return _db
 
 
 async def close_db():
-    global _db
+    global _db, _db_lock, _write_lock
     if _db:
-        await _db.close()
-        _db = None
+        try:
+            await _db.close()
+        except Exception:
+            logger.exception("Error closing database")
+        finally:
+            _db = None
+            _db_lock = None
+            _write_lock = None
 
 
 async def _run_migrations(db: aiosqlite.Connection):
@@ -64,11 +89,40 @@ async def _run_migrations(db: aiosqlite.Connection):
 async def log_event(queue_entry_id: str | None, event_type: str, detail: str | None = None):
     """Log a game event to the database."""
     db = await get_db()
-    await db.execute(
-        "INSERT INTO game_events (queue_entry_id, event_type, detail) VALUES (?, ?, ?)",
-        (queue_entry_id, event_type, detail),
-    )
-    await db.commit()
+    _ensure_locks()
+    async with _write_lock:
+        await db.execute(
+            "INSERT INTO game_events (queue_entry_id, event_type, detail) VALUES (?, ?, ?)",
+            (queue_entry_id, event_type, detail),
+        )
+        await db.commit()
+
+
+async def prune_old_entries(retention_hours: int = 48):
+    """Delete completed queue entries and game events older than retention_hours.
+
+    Call periodically to prevent unbounded database growth during multi-day demos.
+    """
+    db = await get_db()
+    _ensure_locks()
+    async with _write_lock:
+        cutoff = f"-{retention_hours} hours"
+        result_events = await db.execute(
+            "DELETE FROM game_events WHERE created_at < datetime('now', ?)", (cutoff,)
+        )
+        result_entries = await db.execute(
+            "DELETE FROM queue_entries WHERE state IN ('done', 'cancelled') "
+            "AND completed_at < datetime('now', ?)",
+            (cutoff,),
+        )
+        await db.commit()
+        events_deleted = result_events.rowcount
+        entries_deleted = result_entries.rowcount
+        if events_deleted or entries_deleted:
+            logger.info(
+                "DB prune: removed %d events, %d completed entries (older than %dh)",
+                events_deleted, entries_deleted, retention_hours,
+            )
 
 
 def hash_token(token: str) -> str:

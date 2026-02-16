@@ -10,6 +10,9 @@ from fastapi.responses import Response, StreamingResponse
 
 router = APIRouter(prefix="/api")
 
+_active_mjpeg_streams = 0
+_MAX_MJPEG_STREAMS = 20
+
 
 @router.get("/stream/snapshot")
 async def snapshot(request: Request):
@@ -26,22 +29,34 @@ async def snapshot(request: Request):
 @router.get("/stream/mjpeg")
 async def mjpeg_stream(request: Request):
     """Continuous MJPEG stream (multipart/x-mixed-replace)."""
+    global _active_mjpeg_streams
+
     camera = getattr(request.app.state, "camera", None)
     if not camera or not camera.is_running:
         raise HTTPException(503, "Camera not available")
 
+    if _active_mjpeg_streams >= _MAX_MJPEG_STREAMS:
+        raise HTTPException(503, "Too many active streams")
+
     async def generate():
-        while True:
-            frame = camera.get_frame()
-            if frame:
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n"
-                    b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
-                    + frame
-                    + b"\r\n"
-                )
-            await asyncio.sleep(1 / 30)
+        global _active_mjpeg_streams
+        _active_mjpeg_streams += 1
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                frame = camera.get_frame()
+                if frame:
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n"
+                        b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
+                        + frame
+                        + b"\r\n"
+                    )
+                await asyncio.sleep(1 / 30)
+        finally:
+            _active_mjpeg_streams -= 1
 
     return StreamingResponse(
         generate(),

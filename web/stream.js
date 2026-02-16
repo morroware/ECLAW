@@ -40,12 +40,27 @@ class StreamPlayer {
 
     this.pc.oniceconnectionstatechange = () => {
       const state = this.pc.iceConnectionState;
-      if (state === "failed" || state === "disconnected") {
-        console.warn("Stream disconnected, reconnecting in 3s...");
+      if (state === "failed") {
+        console.warn("Stream failed, reconnecting in 3s...");
         if (!this._reconnecting) {
           this._reconnecting = true;
           setTimeout(() => this.reconnect(), 3000);
         }
+      } else if (state === "disconnected") {
+        // "disconnected" is often transient; give it time to self-recover
+        console.warn("Stream disconnected, will reconnect in 10s if not recovered...");
+        if (!this._reconnecting) {
+          this._reconnecting = true;
+          setTimeout(() => {
+            if (this.pc && this.pc.iceConnectionState !== "connected") {
+              this.reconnect();
+            } else {
+              this._reconnecting = false;
+            }
+          }, 10000);
+        }
+      } else if (state === "connected") {
+        this._reconnecting = false;
       }
     };
 
@@ -101,6 +116,16 @@ class StreamPlayer {
     img.style.position = "absolute";
     img.style.top = "0";
     img.style.left = "0";
+
+    // Auto-reconnect on MJPEG stream error (e.g., server restart)
+    img.onerror = () => {
+      console.warn("MJPEG stream error, reconnecting in 3s...");
+      setTimeout(() => {
+        if (this._mjpegImg) {
+          this._mjpegImg.src = "/api/stream/mjpeg?" + Date.now();
+        }
+      }, 3000);
+    };
 
     this.video.style.display = "none";
     this.video.parentNode.insertBefore(img, this.video.nextSibling);

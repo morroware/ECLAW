@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database import get_db, hash_token, log_event
+import app.database as _db_mod
 
 
 class QueueManager:
@@ -16,14 +17,15 @@ class QueueManager:
         raw_token = secrets.token_urlsafe(32)
         token_h = hash_token(raw_token)
 
-        # Atomic position assignment: INSERT with subquery in a single statement
-        await db.execute(
-            """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
-               VALUES (?, ?, ?, ?, ?, 'waiting',
-                       COALESCE((SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'), 0) + 1)""",
-            (entry_id, token_h, name, email, ip),
-        )
-        await db.commit()
+        async with _db_mod._write_lock:
+            # Atomic position assignment: INSERT with subquery in a single statement
+            await db.execute(
+                """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
+                   VALUES (?, ?, ?, ?, ?, 'waiting',
+                           COALESCE((SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'), 0) + 1)""",
+                (entry_id, token_h, name, email, ip),
+            )
+            await db.commit()
 
         # Read back the assigned position
         async with db.execute(
@@ -39,23 +41,25 @@ class QueueManager:
     async def leave(self, token_hash: str) -> bool:
         """Cancel a waiting/ready player's queue entry. Returns False if no matching entry."""
         db = await get_db()
-        # Find entry first for logging
-        async with db.execute(
-            "SELECT id FROM queue_entries WHERE token_hash = ? AND state IN ('waiting', 'ready')",
-            (token_hash,),
-        ) as cur:
-            row = await cur.fetchone()
-            entry_id = row[0] if row else None
 
-        if not entry_id:
-            return False
+        async with _db_mod._write_lock:
+            # Find entry first for logging
+            async with db.execute(
+                "SELECT id FROM queue_entries WHERE token_hash = ? AND state IN ('waiting', 'ready')",
+                (token_hash,),
+            ) as cur:
+                row = await cur.fetchone()
+                entry_id = row[0] if row else None
 
-        await db.execute(
-            "UPDATE queue_entries SET state = 'cancelled', completed_at = datetime('now') "
-            "WHERE token_hash = ? AND state IN ('waiting', 'ready')",
-            (token_hash,),
-        )
-        await db.commit()
+            if not entry_id:
+                return False
+
+            await db.execute(
+                "UPDATE queue_entries SET state = 'cancelled', completed_at = datetime('now') "
+                "WHERE token_hash = ? AND state IN ('waiting', 'ready')",
+                (token_hash,),
+            )
+            await db.commit()
 
         await log_event(entry_id, "leave")
         return True
@@ -75,23 +79,25 @@ class QueueManager:
         activated_at = None
         if state == "active":
             activated_at = datetime.now(timezone.utc).isoformat()
-        await db.execute(
-            "UPDATE queue_entries SET state = ?, activated_at = COALESCE(?, activated_at) WHERE id = ?",
-            (state, activated_at, entry_id),
-        )
-        await db.commit()
+        async with _db_mod._write_lock:
+            await db.execute(
+                "UPDATE queue_entries SET state = ?, activated_at = COALESCE(?, activated_at) WHERE id = ?",
+                (state, activated_at, entry_id),
+            )
+            await db.commit()
 
         await log_event(entry_id, f"state_{state}")
 
     async def complete_entry(self, entry_id: str, result: str, tries_used: int):
         """Mark a queue entry as done with a result."""
         db = await get_db()
-        await db.execute(
-            "UPDATE queue_entries SET state = 'done', result = ?, tries_used = ?, "
-            "completed_at = datetime('now') WHERE id = ?",
-            (result, tries_used, entry_id),
-        )
-        await db.commit()
+        async with _db_mod._write_lock:
+            await db.execute(
+                "UPDATE queue_entries SET state = 'done', result = ?, tries_used = ?, "
+                "completed_at = datetime('now') WHERE id = ?",
+                (result, tries_used, entry_id),
+            )
+            await db.commit()
 
         await log_event(entry_id, "turn_end", json.dumps({"result": result, "tries": tries_used}))
 
@@ -131,19 +137,20 @@ class QueueManager:
         appear correctly in history and are not orphaned.
         """
         db = await get_db()
-        await db.execute(
-            "UPDATE queue_entries SET state = 'done', result = 'expired', "
-            "completed_at = COALESCE(completed_at, datetime('now')) "
-            "WHERE state = 'active' AND activated_at IS NOT NULL "
-            "AND (julianday('now') - julianday(activated_at)) * 86400 > ?",
-            (grace_seconds,),
-        )
-        await db.execute(
-            "UPDATE queue_entries SET state = 'done', result = 'expired', "
-            "completed_at = COALESCE(completed_at, datetime('now')) "
-            "WHERE state = 'ready'"
-        )
-        await db.commit()
+        async with _db_mod._write_lock:
+            await db.execute(
+                "UPDATE queue_entries SET state = 'done', result = 'expired', "
+                "completed_at = COALESCE(completed_at, datetime('now')) "
+                "WHERE state = 'active' AND activated_at IS NOT NULL "
+                "AND (julianday('now') - julianday(activated_at)) * 86400 > ?",
+                (grace_seconds,),
+            )
+            await db.execute(
+                "UPDATE queue_entries SET state = 'done', result = 'expired', "
+                "completed_at = COALESCE(completed_at, datetime('now')) "
+                "WHERE state = 'ready'"
+            )
+            await db.commit()
 
     async def list_queue(self) -> list[dict]:
         """Return all active queue entries (waiting, ready, active) ordered by position."""

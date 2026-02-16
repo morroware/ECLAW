@@ -13,6 +13,9 @@
   let moveTimerInterval = null;
   let readyTimerInterval = null;
   let streamPlayer = null;
+  let _keyboardTeardown = null;
+  let _dpadInstance = null;
+  let _statusReconnectDelay = 3000;
 
   // -- DOM Elements ---------------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
@@ -23,6 +26,7 @@
   const resultPanel = $("#result-panel");
   const joinForm = $("#join-form");
   const joinError = $("#join-error");
+  const joinBtn = $("#join-btn");
   const connectionDot = $("#connection-status");
   const viewerCount = $("#viewer-count");
   const latencyDisplay = $("#latency-display");
@@ -60,10 +64,13 @@
 
     statusWs.onopen = () => {
       connectionDot.className = "status-dot connected";
+      _statusReconnectDelay = 3000; // Reset backoff on successful connect
     };
 
     statusWs.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+      let msg;
+      try { msg = JSON.parse(event.data); }
+      catch (e) { console.warn("Bad status WS message:", e); return; }
 
       if (msg.type === "queue_update") {
         queueLength.textContent = `Queue: ${msg.queue_length}`;
@@ -84,7 +91,8 @@
       }
 
       if (msg.type === "turn_end") {
-        gameStateDisplay.textContent = `${msg.result.toUpperCase()}!`;
+        const result = (msg.result || "").toUpperCase();
+        gameStateDisplay.textContent = `${result}!`;
         setTimeout(() => {
           gameStateDisplay.textContent = "";
         }, 3000);
@@ -95,7 +103,12 @@
 
     statusWs.onclose = () => {
       connectionDot.className = "status-dot disconnected";
-      setTimeout(connectStatusWs, 3000);
+      setTimeout(connectStatusWs, _statusReconnectDelay);
+      _statusReconnectDelay = Math.min(_statusReconnectDelay * 1.5, 30000);
+    };
+
+    statusWs.onerror = () => {
+      // onclose will fire after this
     };
   }
 
@@ -199,7 +212,7 @@
     historyList.innerHTML = entries
       .map((entry) => {
         const isWin = entry.result === "win";
-        const resultLabel = isWin ? "WIN" : entry.result.toUpperCase();
+        const resultLabel = isWin ? "WIN" : (entry.result || "").toUpperCase();
         const resultClass = isWin ? "result-win" : "result-loss";
         const tries = entry.tries_used != null ? `${entry.tries_used} tries` : "";
         const timeAgo = entry.completed_at ? formatTimeAgo(entry.completed_at) : "";
@@ -221,6 +234,10 @@
 
     const name = $("#join-name").value.trim();
     const email = $("#join-email").value.trim();
+
+    // Disable button to prevent double-submit
+    joinBtn.disabled = true;
+    joinBtn.textContent = "Joining...";
 
     try {
       const res = await fetch("/api/queue/join", {
@@ -248,6 +265,9 @@
       connectControlWs();
     } catch (e) {
       joinError.textContent = "Network error. Please try again.";
+    } finally {
+      joinBtn.disabled = false;
+      joinBtn.textContent = "Join Queue";
     }
   });
 
@@ -299,6 +319,16 @@
 
   function connectControlWs() {
     if (!token) return;
+
+    // Clean up previous keyboard/dpad listeners to prevent accumulation
+    if (_keyboardTeardown) {
+      _keyboardTeardown();
+      _keyboardTeardown = null;
+    }
+    if (_dpadInstance) {
+      _dpadInstance.destroy();
+      _dpadInstance = null;
+    }
     if (controlSocket) controlSocket.disconnect();
 
     controlSocket = new ControlSocket(token);
@@ -321,21 +351,32 @@
 
     controlSocket.onError = (msg) => {
       console.error("Control error:", msg.message);
+      // Handle auth failures on reconnect
+      if (msg.message === "Invalid token" || msg.message === "Auth required") {
+        cleanup();
+        switchToState(null);
+        joinError.textContent = "Session expired. Please rejoin the queue.";
+      }
     };
 
     controlSocket.onConnect = () => {
       latencyDisplay.textContent = "";
     };
 
+    controlSocket.onDisconnect = () => {
+      latencyDisplay.textContent = "Reconnecting...";
+      latencyDisplay.style.color = "var(--danger)";
+    };
+
     controlSocket.connect();
 
-    // Set up keyboard controls
-    setupKeyboard(controlSocket);
+    // Set up keyboard controls (returns a teardown function)
+    _keyboardTeardown = setupKeyboard(controlSocket);
 
     // Set up touch D-pad
     const dpad = $("#dpad");
     if (dpad) {
-      new TouchDPad(dpad, controlSocket);
+      _dpadInstance = new TouchDPad(dpad, controlSocket);
     }
   }
 
@@ -370,17 +411,21 @@
 
   function startMoveTimer(msg) {
     clearInterval(moveTimerInterval);
-    let secondsLeft = 30; // default
-    if (msg.try_move_seconds) secondsLeft = msg.try_move_seconds;
+    let secondsLeft = msg.try_move_seconds || 30;
 
-    updateTimerDisplay(secondsLeft);
-    moveTimerInterval = setInterval(() => {
-      secondsLeft--;
-      updateTimerDisplay(secondsLeft);
-      if (secondsLeft <= 0) {
+    // Use deadline-based approach to prevent drift from setInterval inaccuracy
+    const endTime = Date.now() + secondsLeft * 1000;
+
+    function tick() {
+      const left = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      updateTimerDisplay(left);
+      if (left <= 0) {
         clearInterval(moveTimerInterval);
       }
-    }, 1000);
+    }
+
+    tick();
+    moveTimerInterval = setInterval(tick, 250);
   }
 
   function updateTimerDisplay(seconds) {
@@ -403,18 +448,21 @@
 
   function startReadyTimer(seconds) {
     clearInterval(readyTimerInterval);
-    let left = seconds || 15;
+    const endTime = Date.now() + (seconds || 15) * 1000;
     const el = $("#ready-timer");
-    el.textContent = `${left}s`;
 
-    readyTimerInterval = setInterval(() => {
-      left--;
-      el.textContent = `${left}s`;
+    function tick() {
+      const left = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
       if (left <= 0) {
         clearInterval(readyTimerInterval);
         el.textContent = "Time's up!";
+      } else {
+        el.textContent = `${left}s`;
       }
-    }, 1000);
+    }
+
+    tick();
+    readyTimerInterval = setInterval(tick, 250);
   }
 
   // -- UI State Switching ---------------------------------------------------
@@ -511,6 +559,7 @@
     const then = new Date(isoStr + (isoStr.endsWith("Z") ? "" : "Z")).getTime();
     const diffS = Math.floor((now - then) / 1000);
 
+    if (diffS < 0) return "just now";
     if (diffS < 60) return "just now";
     if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
     if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
@@ -524,6 +573,14 @@
   }
 
   function cleanup() {
+    if (_keyboardTeardown) {
+      _keyboardTeardown();
+      _keyboardTeardown = null;
+    }
+    if (_dpadInstance) {
+      _dpadInstance.destroy();
+      _dpadInstance = null;
+    }
     if (controlSocket) {
       controlSocket.disconnect();
       controlSocket = null;
@@ -531,6 +588,8 @@
     localStorage.removeItem("eclaw_token");
     token = null;
     playerState = null;
+    latencyDisplay.textContent = "";
+    latencyDisplay.style.color = "";
     clearInterval(moveTimerInterval);
     clearInterval(readyTimerInterval);
   }
@@ -539,11 +598,21 @@
   setInterval(() => {
     if (controlSocket && controlSocket.latencyMs) {
       latencyDisplay.textContent = `${Math.abs(controlSocket.latencyMs)}ms`;
+      latencyDisplay.style.color = "";
     }
   }, 2000);
 
   // -- Periodic History Refresh ---------------------------------------------
   // Queue updates are handled in real-time by the status WebSocket.
   // Only history needs a periodic fallback since it's not pushed on every change.
-  setInterval(fetchHistory, 15000);
+  // Pause polling when tab is hidden to reduce unnecessary requests.
+  let _historyInterval = setInterval(fetchHistory, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearInterval(_historyInterval);
+    } else {
+      fetchHistory();
+      _historyInterval = setInterval(fetchHistory, 30000);
+    }
+  });
 })();

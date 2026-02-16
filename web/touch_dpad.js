@@ -9,11 +9,24 @@ class TouchDPad {
 
     this.el.style.touchAction = "none"; // Prevent scrolling/zooming
 
-    this.el.addEventListener("pointerdown", (e) => this._onPointer(e));
-    this.el.addEventListener("pointermove", (e) => this._onPointer(e));
-    this.el.addEventListener("pointerup", () => this._release());
-    this.el.addEventListener("pointercancel", () => this._release());
-    this.el.addEventListener("pointerleave", () => this._release());
+    // Bind handlers so they can be removed in destroy()
+    this._onPointerBound = (e) => this._onPointer(e);
+    this._releaseBound = () => this._release();
+
+    this.el.addEventListener("pointerdown", this._onPointerBound);
+    this.el.addEventListener("pointermove", this._onPointerBound);
+    this.el.addEventListener("pointerup", this._releaseBound);
+    this.el.addEventListener("pointercancel", this._releaseBound);
+    this.el.addEventListener("pointerleave", this._releaseBound);
+  }
+
+  destroy() {
+    this._release();
+    this.el.removeEventListener("pointerdown", this._onPointerBound);
+    this.el.removeEventListener("pointermove", this._onPointerBound);
+    this.el.removeEventListener("pointerup", this._releaseBound);
+    this.el.removeEventListener("pointercancel", this._releaseBound);
+    this.el.removeEventListener("pointerleave", this._releaseBound);
   }
 
   _onPointer(e) {
