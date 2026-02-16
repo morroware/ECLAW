@@ -172,16 +172,30 @@ async def queue_leave(request: Request, authorization: str = Header(...)):
     if not raw:
         raise HTTPException(401, "Missing token")
     qm = request.app.state.queue_manager
-    left = await qm.leave(hash_token(raw))
+    token_hash = hash_token(raw)
+
+    # Look up entry before leaving so we can check if it's the active player
+    entry = await qm.get_by_token(token_hash)
+
+    left = await qm.leave(token_hash)
     if not left:
         raise HTTPException(404, "No active queue entry found for this token")
-    status = await qm.get_queue_status()
-    entries = await qm.list_queue()
-    queue_entries = [
-        {"name": e["name"], "state": e["state"], "position": e["position"]}
-        for e in entries
-    ]
-    await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
+
+    # If the leaving player was the current active entry (e.g., in READY_PROMPT),
+    # immediately skip them so the queue doesn't wait for the ready timeout.
+    sm = request.app.state.state_machine
+    if entry and entry["id"] == sm.active_entry_id:
+        await sm.force_end_turn("cancelled")
+    else:
+        # Only broadcast manually if force_end_turn didn't already do it
+        status = await qm.get_queue_status()
+        entries = await qm.list_queue()
+        queue_entries = [
+            {"name": e["name"], "state": e["state"], "position": e["position"]}
+            for e in entries
+        ]
+        await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
+
     return {"ok": True}
 
 

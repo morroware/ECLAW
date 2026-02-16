@@ -66,6 +66,15 @@ class ControlHandler:
                 "position": entry["position"],
             }))
 
+            # If this player is the active player, send the current game state
+            # so they can resume after a page refresh (correct try counter,
+            # timer, etc.).
+            if entry_id == self.sm.active_entry_id:
+                payload = self.sm._build_state_payload()
+                await ws.send_text(json.dumps({
+                    "type": "state_update", **payload
+                }))
+
             logger.info(f"Player {entry_id} connected (state={entry['state']})")
 
             # Main message loop

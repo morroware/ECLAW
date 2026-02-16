@@ -131,6 +131,13 @@
       });
       if (res.ok) {
         const data = await res.json();
+        // Terminal states — clear stale token and reset to join screen
+        if (data.state === "done" || data.state === "cancelled") {
+          localStorage.removeItem("eclaw_token");
+          token = null;
+          switchToState(null);
+          return;
+        }
         token = savedToken;
         switchToState(data.state, data);
       } else {
@@ -540,6 +547,7 @@
         } else {
           startReadyTimer(15);
         }
+        if (!controlSocket) connectControlWs();
         break;
 
       case "active":
@@ -550,6 +558,7 @@
         if (document.activeElement && document.activeElement !== document.body) {
           document.activeElement.blur();
         }
+        if (!controlSocket) connectControlWs();
         break;
 
       case "done":
