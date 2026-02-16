@@ -50,7 +50,7 @@ make demo
 ### Step 3: Open the UI
 
 Open http://localhost:8000 in your browser. You should see the ECLAW interface with:
-- A video area (will show "Stream not available" without a camera — that's expected)
+- A video area (shows WebRTC stream if MediaMTX is running, or built-in MJPEG if a USB camera is connected, or "Stream not available" if neither — all expected for local dev)
 - A "Join the Queue" form
 - A live queue list
 
@@ -113,14 +113,15 @@ For production with standard timers:
 ```
 
 The installer will:
-1. Install system packages (python3, nginx, sqlite3, lgpio)
-2. Create system users (claw, mediamtx)
+1. Install system packages (python3, nginx, sqlite3, lgpio, ffmpeg, v4l-utils, libopenblas0, libatlas-base-dev)
+2. Create system users (`claw` with gpio+video groups, `mediamtx` with video group)
 3. Download and install MediaMTX (camera streaming server)
 4. Deploy the app to `/opt/claw`
-5. Set up the Python virtual environment
+5. Set up the Python virtual environment with all dependencies (including OpenCV)
 6. Test GPIO access
-7. Install nginx, systemd services
-8. Start everything automatically
+7. Install nginx, systemd services (with camera access for the game server)
+8. Auto-detect camera type (Pi Camera vs USB) and configure MediaMTX accordingly
+9. Start everything automatically
 
 ### Step 4: Verify it's running
 
@@ -195,7 +196,10 @@ Then restart: `sudo systemctl restart claw-server`
 
 ## Camera Setup
 
-ECLAW streams video via MediaMTX using WebRTC. Both Pi Camera modules and USB cameras are supported. The setup script auto-detects which type is connected.
+ECLAW supports two streaming modes:
+
+1. **WebRTC via MediaMTX** (primary) — Low-latency WebRTC stream. Supports both Pi Camera modules and USB cameras. The setup script auto-detects which type is connected.
+2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/camera`. The camera auto-detects the correct `/dev/video*` device. This is useful for development or if MediaMTX has issues.
 
 ### Pi Camera
 
@@ -222,7 +226,7 @@ paths:
 
 ### USB Camera
 
-If no Pi Camera is detected, the setup script automatically configures MediaMTX to use a USB camera via FFmpeg.
+If no Pi Camera is detected, the setup script automatically configures MediaMTX to use a USB camera via FFmpeg. The built-in MJPEG fallback also auto-detects the correct `/dev/video*` device (USB cameras often create multiple device nodes; the server scans even-numbered devices which are typically the capture interfaces).
 
 ```bash
 # Check that your USB camera is recognized:
@@ -232,7 +236,13 @@ v4l2-ctl --list-devices
 v4l2-ctl -d /dev/video0 --list-formats-ext
 ```
 
-If your camera is on a different device (e.g. `/dev/video2`), edit `/etc/mediamtx.yml` and change the `-i /dev/video0` path in the `runOnInit` line.
+If your camera is on a different device (e.g. `/dev/video2`), edit `/etc/mediamtx.yml` and change the `-i /dev/video0` path in the `runOnInit` line. The built-in MJPEG fallback will auto-detect the device automatically.
+
+**Important**: The user running the server needs to be in the `video` group to access `/dev/video*`:
+```bash
+sudo usermod -a -G video $USER
+# Log out and back in for the group change to take effect
+```
 
 To manually switch to USB camera config:
 
@@ -306,14 +316,20 @@ ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 /tmp/test.jpg
 
 # Check MediaMTX logs:
 sudo journalctl -u mediamtx -n 50 --no-pager
+
+# Check built-in camera fallback (in game server logs):
+sudo journalctl -u claw-server -n 50 --no-pager | grep -i camera
 ```
 
 Common causes:
+- **Permission denied on /dev/video***: User not in `video` group — `sudo usermod -a -G video $USER` and log out/in
 - **Pi Camera**: Cable not seated, or interface not enabled (`sudo raspi-config` > Interface Options > Camera)
-- **USB Camera**: Device not at `/dev/video0` — check `v4l2-ctl --list-devices` and update `/etc/mediamtx.yml`
+- **USB Camera**: Device not at `/dev/video0` — check `v4l2-ctl --list-devices` and update `/etc/mediamtx.yml` (the built-in MJPEG fallback auto-detects)
 - **USB Camera**: Camera doesn't support MJPEG — change `-input_format mjpeg` to `-input_format yuyv422` in `/etc/mediamtx.yml`
 - **Both**: Wrong config file deployed — check `/etc/mediamtx.yml` matches your camera type
-- ffmpeg not installed (USB cameras require it) — `sudo apt install ffmpeg`
+- ffmpeg not installed (USB cameras require it for MediaMTX) — `sudo apt install ffmpeg`
+- OpenCV not installed (needed for built-in MJPEG fallback) — `pip install opencv-python-headless`
+- Missing system libraries for OpenCV — `sudo apt install libopenblas0 libatlas-base-dev`
 
 ### GPIO not responding
 
@@ -323,7 +339,7 @@ sudo -u claw /opt/claw/venv/bin/python scripts/gpio_test.py --cycles 5
 ```
 
 Common causes:
-- `claw` user not in `gpio` group
+- `claw` user not in `gpio` group — `sudo usermod -a -G gpio claw`
 - Wrong `GPIOZERO_PIN_FACTORY` setting (must be `lgpio` on Pi 5)
 - Pin numbers don't match your wiring
 
@@ -380,8 +396,8 @@ make restart        # Restart all services
                 |              |
         +-------+-------+     |
         |       |       |     |
-     Queue   State    GPIO  Camera
-     (SQLite) Machine (lgpio)(rpicam/usb)
+     Queue   State    GPIO  Camera (WebRTC or MJPEG fallback)
+     (SQLite) Machine (lgpio)(rpicam/usb/opencv)
         |       |       |
         +-------+-------+
                 |

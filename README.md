@@ -66,7 +66,12 @@ FastAPI        MediaMTX
 ## Project Structure
 
 ```
-app/                    FastAPI backend (API, game logic, GPIO, WebSocket)
+app/                    FastAPI backend (API, game logic, GPIO, camera, WebSocket)
+  api/                  REST endpoints (public + admin + stream)
+  game/                 Queue manager + state machine
+  gpio/                 GPIO controller (gpiozero wrapper)
+  ws/                   WebSocket hubs (status broadcast + player control)
+  camera.py             Built-in USB camera capture (MJPEG fallback)
 web/                    Browser UI (vanilla JS, no build step)
 watchdog/               Independent GPIO safety monitor
 migrations/             SQLite schema
@@ -177,11 +182,12 @@ make status           # Health check against running server
 
 ### Pi 5 Production
 
-- Raspberry Pi 5 with Pi OS 64-bit
+- Raspberry Pi 5 with Pi OS 64-bit (Bookworm)
 - `python3-lgpio` (installed automatically)
+- `libopenblas0`, `libatlas-base-dev` (installed automatically, needed by OpenCV/numpy)
 - nginx (installed automatically)
 - MediaMTX (installed automatically)
-- Pi Camera Module (for live stream)
+- Pi Camera Module **or** USB webcam (for live stream)
 
 ---
 
@@ -197,9 +203,18 @@ ECLAW includes multiple safety layers:
 
 ---
 
+## Camera Support
+
+ECLAW supports two streaming modes:
+
+- **WebRTC via MediaMTX** — Primary mode. Uses Pi Camera Module or USB webcam via FFmpeg. Low-latency WebRTC stream proxied through nginx. The setup script auto-detects your camera type.
+- **Built-in MJPEG fallback** — If MediaMTX is not running (e.g., during development), the server captures directly from a USB camera via OpenCV and serves an MJPEG stream at `/api/stream/camera`. The camera auto-detects the correct `/dev/video*` device.
+
+---
+
 ## Known Limitations
 
 - Rate limiting is in-memory (single process) — fine for one Pi
 - Frontend is vanilla JS with no build tooling (intentional simplicity)
 - CORS is permissive (`*`) by default — restrict for internet-facing deployment
-- WebRTC streaming requires MediaMTX and a Pi Camera Module
+- Built-in MJPEG fallback requires `opencv-python-headless` and a USB camera (not Pi Camera CSI)
