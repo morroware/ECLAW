@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     logger.info("Starting claw machine server")
     app.state.start_time = time.time()
+    app.state.background_tasks = set()
 
     # Init database
     await get_db()
@@ -74,6 +76,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down")
+    tasks = list(app.state.background_tasks)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     if app.state.camera:
         app.state.camera.stop()
     await gpio.cleanup()

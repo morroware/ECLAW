@@ -1,5 +1,6 @@
 """API integration tests — tests the full REST API + WebSocket flow."""
 
+import asyncio
 import os
 
 import pytest
@@ -187,6 +188,22 @@ async def test_join_rate_limit_normalizes_email(api_client):
         json={"name": "Player3", "email": "demo@example.com"},
     )
     assert blocked.status_code == 429
+
+
+
+@pytest.mark.anyio
+async def test_join_background_task_is_tracked(api_client):
+    app = api_client._transport.app
+
+    res = await api_client.post(
+        "/api/queue/join",
+        json={"name": "Tracked", "email": "tracked@example.com"},
+    )
+    assert res.status_code == 200
+
+    # Task should be registered for lifecycle cleanup.
+    await asyncio.sleep(0)
+    assert len(app.state.background_tasks) >= 1
 
 @pytest.mark.anyio
 async def test_join_validation(api_client):
