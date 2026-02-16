@@ -81,7 +81,7 @@ async def simulate_player(base_url: str, player_num: int):
 
                 # Drop
                 print(f"[{name}] Dropping!")
-                await ws.send(json.dumps({"type": "drop"}))
+                await ws.send(json.dumps({"type": "drop_start"}))
 
             elif msg.get("type") == "turn_end":
                 result = msg.get("result", "unknown")

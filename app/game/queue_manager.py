@@ -122,13 +122,26 @@ class QueueManager:
         }
 
     async def cleanup_stale(self, grace_seconds: int):
-        """Called on startup. Expire entries that were left active too long ago."""
+        """Called on startup. Expire entries left over from a previous session.
+
+        - 'active' entries older than grace_seconds are expired.
+        - 'ready' entries are always expired on restart (their WebSocket is gone
+          so they can never confirm readiness).
+        Both are transitioned to state='done' with result='expired' so they
+        appear correctly in history and are not orphaned.
+        """
         db = await get_db()
         await db.execute(
-            "UPDATE queue_entries SET state = 'expired' "
+            "UPDATE queue_entries SET state = 'done', result = 'expired', "
+            "completed_at = COALESCE(completed_at, datetime('now')) "
             "WHERE state = 'active' AND activated_at IS NOT NULL "
             "AND (julianday('now') - julianday(activated_at)) * 86400 > ?",
             (grace_seconds,),
+        )
+        await db.execute(
+            "UPDATE queue_entries SET state = 'done', result = 'expired', "
+            "completed_at = COALESCE(completed_at, datetime('now')) "
+            "WHERE state = 'ready'"
         )
         await db.commit()
 

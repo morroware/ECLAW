@@ -82,6 +82,7 @@ class ControlHandler:
                 # (a new connection may have already replaced us)
                 if self._player_ws.get(entry_id) is ws:
                     self._player_ws.pop(entry_id, None)
+                    self._last_command_time.pop(entry_id, None)
                     if entry_id == self.sm.active_entry_id:
                         await self.sm.handle_disconnect(entry_id)
                         # Start grace period for active player
