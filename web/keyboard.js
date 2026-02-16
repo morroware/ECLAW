@@ -1,6 +1,13 @@
 /**
  * Desktop Keyboard Controls — WASD + Arrow Keys for movement, Space to drop.
  * Returns a cleanup function that removes all event listeners.
+ *
+ * Key design decisions:
+ *  - preventDefault is called for ALL game keys (arrows, WASD, Space) on EVERY
+ *    event, including repeats, to stop the browser from scrolling the page.
+ *  - dropStart() is only sent on the first non-repeat Space press.
+ *  - Direction keydowns are de-duplicated via the `pressed` set so holding a
+ *    key doesn't flood the server.
  */
 function setupKeyboard(controlSocket) {
   const KEY_MAP = {
@@ -16,15 +23,21 @@ function setupKeyboard(controlSocket) {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
     const dir = KEY_MAP[e.code];
-    if (dir && !pressed.has(dir)) {
-      pressed.add(dir);
-      controlSocket.keydown(dir);
-      e.preventDefault();
+    if (dir) {
+      e.preventDefault(); // Always prevent arrow/WASD from scrolling
+      if (!pressed.has(dir)) {
+        pressed.add(dir);
+        controlSocket.keydown(dir);
+      }
     }
-    // Space = single-press drop (no hold needed)
-    if (e.code === "Space" && !e.repeat) {
-      controlSocket.dropStart();
+
+    // Space = single-press drop. Always preventDefault to block page scroll,
+    // but only fire dropStart on the initial keydown (not repeats).
+    if (e.code === "Space") {
       e.preventDefault();
+      if (!e.repeat) {
+        controlSocket.dropStart();
+      }
     }
   }
 
@@ -32,10 +45,12 @@ function setupKeyboard(controlSocket) {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
     const dir = KEY_MAP[e.code];
-    if (dir && pressed.has(dir)) {
-      pressed.delete(dir);
-      controlSocket.keyup(dir);
+    if (dir) {
       e.preventDefault();
+      if (pressed.has(dir)) {
+        pressed.delete(dir);
+        controlSocket.keyup(dir);
+      }
     }
   }
 
