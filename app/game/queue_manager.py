@@ -110,6 +110,15 @@ class QueueManager:
             row = await cur.fetchone()
             return dict(row) if row else None
 
+    async def get_by_id(self, entry_id: str) -> dict | None:
+        """Look up a queue entry by ID."""
+        db = await get_db()
+        async with db.execute(
+            "SELECT * FROM queue_entries WHERE id = ?", (entry_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
     async def get_queue_status(self) -> dict:
         """Get current queue stats for broadcasting."""
         db = await get_db()

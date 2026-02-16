@@ -42,8 +42,8 @@ async def _periodic_db_prune(interval_seconds: int = 3600):
 
 async def _periodic_queue_check(sm, interval_seconds: int = 10):
     """Safety net: periodically check if the state machine is IDLE with
-    waiting players and kick-start the queue if so.  This catches edge
-    cases where advance_queue was missed (e.g. exception in a timer task)."""
+    waiting players and kick-start the queue if so.  Also detects stuck
+    states where the active entry was cancelled/completed externally."""
     from app.game.state_machine import TurnState
     while True:
         await asyncio.sleep(interval_seconds)
@@ -53,6 +53,19 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
                 if waiting > 0:
                     logger.info("Periodic queue check: IDLE with %d waiting, advancing", waiting)
                     await sm.advance_queue()
+            elif sm.state not in (TurnState.IDLE, TurnState.TURN_END) and sm.active_entry_id:
+                # Check if the active entry has been externally terminated
+                # (e.g. cancelled via leave, or completed by a race condition).
+                # If so, the state machine is stuck — force recovery.
+                entry = await sm.queue.get_by_id(sm.active_entry_id)
+                if entry is None or entry["state"] in ("done", "cancelled"):
+                    logger.warning(
+                        "Periodic queue check: active entry %s is %s in DB but SM is in %s, recovering",
+                        sm.active_entry_id,
+                        entry["state"] if entry else "MISSING",
+                        sm.state,
+                    )
+                    await sm._force_recover()
         except Exception:
             logger.exception("Periodic queue check failed")
 
