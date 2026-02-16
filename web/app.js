@@ -299,6 +299,12 @@
       e.preventDefault();
       if (controlSocket) controlSocket.dropStart();
     });
+    // Prevent mousedown from giving the button focus — if the button has
+    // focus, a subsequent Space press fires both the keyboard handler AND the
+    // button's default click action, causing a double-drop or missed drop.
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+    });
     btn.style.touchAction = "none";
   }
 
@@ -538,6 +544,12 @@
 
       case "active":
         controlsPanel.classList.remove("hidden");
+        // Remove focus from any element (e.g. the Ready button) so that
+        // Space keydown goes to the document-level keyboard handler
+        // instead of re-triggering a focused button.
+        if (document.activeElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
         break;
 
       case "done":
