@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     pin_drop: int = 25
     pin_win: int = 16
 
+    # Relay board polarity: most 8-channel relay modules are active-low
+    # (relay engages when GPIO pin goes LOW). Set to true for those boards.
+    relay_active_low: bool = True
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
