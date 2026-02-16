@@ -147,7 +147,7 @@ Share the Pi's URL with anyone on the same network. The UI works on both desktop
 
 ## Wiring the Claw Machine
 
-ECLAW controls the claw machine via GPIO pins. Each pin acts as a digital switch (HIGH/LOW) that can drive a relay or optocoupler.
+ECLAW controls the claw machine via GPIO pins. Each pin drives a relay that switches the claw machine's physical controls.
 
 ### Default Pin Map (BCM numbering)
 
@@ -161,19 +161,72 @@ ECLAW controls the claw machine via GPIO pins. Each pin acts as a digital switch
 | Drop     | 25      | 22          | Pulse output (200ms) |
 | Win      | 16      | 36          | Digital input (win sensor) |
 
+### SainSmart 8-Channel Relay Board Wiring
+
+SainSmart boards (and most 8-channel relay modules) are **active-low**: the relay engages when the input pin is driven LOW. ECLAW handles this automatically when `RELAY_ACTIVE_LOW=true` (the default).
+
+**Board header pins:**
+
+```
+Relay board header:
+  GND  ─── Pi GND (any ground pin, e.g. physical pin 6)
+  IN1  ─── BCM 17 (coin)
+  IN2  ─── BCM 27 (north)
+  IN3  ─── BCM 5  (south)
+  IN4  ─── BCM 6  (west)
+  IN5  ─── BCM 24 (east)
+  IN6  ─── BCM 25 (drop)
+  IN7  ─── (unused)
+  IN8  ─── (unused)
+  VCC  ─── Pi 5V  (physical pin 2 or 4)
+```
+
+**Critical: JD-VCC jumper and relay coil power**
+
+SainSmart boards have a **JD-VCC** jumper that controls power to the relay coils. This is the most common cause of "LEDs light up but relays don't click":
+
+```
+                ┌─────────────┐
+  Signal side   │  JD-VCC VCC │   Relay coil side
+  (optocoupler  │  [JUMPER]   │   (electromagnet)
+   inputs)      │             │
+                └─────────────┘
+```
+
+- **Jumper IN (default from factory)**: VCC powers both the signal side and relay coils. Connect VCC to the Pi's **5V pin** (not 3.3V).
+- **Jumper OUT (isolated mode)**: You must supply a separate 5V power source to the JD-VCC pin for the relay coils. The Pi's VCC pin only powers the optocoupler/LED side. Use this mode if the Pi's 5V rail cannot supply enough current (each relay coil draws ~70-80mA; 6 active relays = ~450mA).
+
+**If you see LEDs toggling but relays don't click**, check:
+
+1. **VCC is connected to 5V, not 3.3V** — The 3.3V pin can light the LEDs but cannot drive the relay coils
+2. **JD-VCC jumper is in place** — Or provide separate 5V to JD-VCC
+3. **Power supply is adequate** — If using many relays simultaneously, use an external 5V supply on JD-VCC instead of the Pi's 5V rail
+
+**Relay output wiring:**
+
+Each relay has three terminals: COM (common), NO (normally open), NC (normally closed). Wire COM and NO in parallel with the claw machine's physical buttons — when the relay engages, it closes the NO contact, simulating a button press.
+
 ### Wiring Steps
 
-1. Connect each GPIO output pin to a relay module input
-2. Connect relay outputs in parallel with the claw machine's physical buttons
-3. Connect the win sensor to GPIO 16 (pulls LOW when prize is detected)
-4. Power the relay module from the Pi's 5V and GND pins
+1. Connect GND from the relay board to any Pi ground pin
+2. Connect VCC from the relay board to the Pi's **5V** pin (physical pin 2 or 4)
+3. Ensure the **JD-VCC jumper** is in place (or supply separate 5V to JD-VCC)
+4. Connect each IN pin to the corresponding GPIO pin (see pin map above)
+5. Wire relay outputs (COM + NO) in parallel with the claw machine's physical buttons
+6. Connect the win sensor to GPIO 16 (pulls LOW when prize is detected)
 
 ### Test GPIO (before connecting to claw machine)
 
 ```bash
-# With LEDs or multimeter on the pins:
+# Run the test — it reads pin config and polarity from .env:
 cd /opt/claw
-sudo -u claw venv/bin/python /path/to/ECLAW/scripts/gpio_test.py
+sudo -u claw venv/bin/python scripts/gpio_test.py --cycles 5
+
+# The test will:
+# 1. Show which polarity is configured
+# 2. Hold each relay ON for 1 second (you should hear a click)
+# 3. Run rapid-cycle tests
+# 4. Test pulse timing
 ```
 
 ### Modify Pin Numbers
@@ -188,6 +241,9 @@ PIN_WEST=6
 PIN_EAST=24
 PIN_DROP=25
 PIN_WIN=16
+
+# Active-low for SainSmart / most 8-channel boards (default: true)
+RELAY_ACTIVE_LOW=true
 ```
 
 Then restart: `sudo systemctl restart claw-server`
@@ -350,6 +406,14 @@ Common causes:
 - `claw` user not in `gpio` group — `sudo usermod -a -G gpio claw`
 - Wrong `GPIOZERO_PIN_FACTORY` setting (must be `lgpio` on Pi 5)
 - Pin numbers don't match your wiring
+
+### LEDs light up on relay board but relays don't click
+
+This means GPIO signals are reaching the board but the relay coils don't have enough power:
+- **VCC connected to 3.3V instead of 5V** — relay coils need 5V. Move VCC to physical pin 2 or 4
+- **JD-VCC jumper missing** — check the jumper between JD-VCC and VCC on the relay board
+- **Insufficient current** — if using 6+ relays, provide a separate 5V/2A supply to JD-VCC (remove the jumper first)
+- **Wrong polarity** — verify `RELAY_ACTIVE_LOW=true` in `.env` for SainSmart boards
 
 ### WebSocket connection fails
 

@@ -4,7 +4,10 @@ Claw Machine GPIO Watchdog.
 
 Monitors the game server health endpoint. If the server is unresponsive
 for WATCHDOG_FAIL_THRESHOLD consecutive checks, forces all GPIO output
-pins LOW using lgpio directly.
+pins to their safe "off" level using lgpio directly.
+
+For active-low relay boards (like SainSmart 8-channel), "off" means
+pins HIGH. For active-high boards, "off" means pins LOW.
 
 This process does NOT use gpiozero and does NOT conflict with the game
 server's pin ownership during normal operation. It only claims pins
@@ -37,9 +40,18 @@ OUTPUT_PINS = [
     int(os.getenv("PIN_DROP", "25")),
 ]
 
+# Relay polarity: active-low boards (e.g. SainSmart 8-channel) need pins
+# driven HIGH to disengage relays. Active-high boards need pins driven LOW.
+RELAY_ACTIVE_LOW = os.getenv("RELAY_ACTIVE_LOW", "true").lower() in ("true", "1", "yes")
+PIN_OFF_LEVEL = 1 if RELAY_ACTIVE_LOW else 0
+
 
 def force_all_pins_off():
-    """Use lgpio directly to force all output pins LOW."""
+    """Use lgpio directly to force all output pins to their safe "off" level.
+
+    Active-low relay boards (SainSmart etc.) need pins HIGH to disengage.
+    Active-high boards need pins LOW to disengage.
+    """
     try:
         import lgpio
     except ImportError:
@@ -50,11 +62,15 @@ def force_all_pins_off():
         h = lgpio.gpiochip_open(0)  # gpiochip0 on Pi 5
         for pin in OUTPUT_PINS:
             try:
-                lgpio.gpio_claim_output(h, pin, 0)  # Claim and set LOW
+                lgpio.gpio_claim_output(h, pin, PIN_OFF_LEVEL)
             except lgpio.error as e:
                 logger.warning(f"Could not claim pin {pin}: {e}")
         lgpio.gpiochip_close(h)
-        logger.critical("WATCHDOG: All pins forced OFF")
+        logger.critical(
+            "WATCHDOG: All pins forced to %s (active_low=%s)",
+            "HIGH" if RELAY_ACTIVE_LOW else "LOW",
+            RELAY_ACTIVE_LOW,
+        )
     except Exception as e:
         logger.critical(f"WATCHDOG: lgpio force-off FAILED: {e}")
 
@@ -71,6 +87,10 @@ def main():
     logger.info(f"Watchdog started. Health URL: {HEALTH_URL}")
     logger.info(f"Check interval: {CHECK_INTERVAL}s, threshold: {FAIL_THRESHOLD}")
     logger.info(f"Monitoring pins: {OUTPUT_PINS}")
+    logger.info(
+        f"Relay polarity: active_low={RELAY_ACTIVE_LOW}, "
+        f"safe off level={'HIGH' if RELAY_ACTIVE_LOW else 'LOW'}"
+    )
 
     with httpx.Client(timeout=2) as client:
         while True:
