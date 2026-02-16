@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # GPIO pulse/hold
     coin_pulse_ms: int = 150
     drop_pulse_ms: int = 200
+    drop_hold_max_ms: int = 10000
     min_inter_pulse_ms: int = 500
     direction_hold_max_ms: int = 30000
     coin_each_try: bool = True

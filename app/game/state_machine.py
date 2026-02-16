@@ -70,11 +70,18 @@ class StateMachine:
         )
         await self._start_try()
 
-    async def handle_drop(self, entry_id: str):
-        """Called when active player presses drop."""
+    async def handle_drop_press(self, entry_id: str):
+        """Called when active player presses (holds) drop."""
         if self.state != TurnState.MOVING or entry_id != self.active_entry_id:
             return
         await self._enter_state(TurnState.DROPPING)
+
+    async def handle_drop_release(self, entry_id: str):
+        """Called when active player releases the drop button."""
+        if self.state != TurnState.DROPPING or entry_id != self.active_entry_id:
+            return
+        await self.gpio.drop_off()
+        await self._enter_state(TurnState.POST_DROP)
 
     async def handle_win(self):
         """Called from win sensor callback (thread-safe bridged)."""
@@ -89,7 +96,10 @@ class StateMachine:
         if entry_id != self.active_entry_id:
             return
         await self.gpio.all_directions_off()
-        logger.info(f"Active player {entry_id} disconnected, directions OFF")
+        if self.state == TurnState.DROPPING:
+            await self.gpio.drop_off()
+            await self._enter_state(TurnState.POST_DROP)
+        logger.info(f"Active player {entry_id} disconnected, all relays OFF")
 
     async def handle_disconnect_timeout(self, entry_id: str):
         """Called after grace period expires without reconnection."""
@@ -147,8 +157,10 @@ class StateMachine:
 
         elif new_state == TurnState.DROPPING:
             await self.gpio.all_directions_off()
-            await self.gpio.pulse("drop")
-            await self._enter_state(TurnState.POST_DROP)
+            await self.gpio.drop_on()
+            self._state_timer = asyncio.create_task(
+                self._drop_hold_timeout(self.settings.drop_hold_max_ms / 1000.0)
+            )
 
         elif new_state == TurnState.POST_DROP:
             self.gpio.register_win_callback(self._win_bridge)
@@ -249,7 +261,20 @@ class StateMachine:
             await asyncio.sleep(seconds)
             if self.state == TurnState.MOVING:
                 logger.info("Move timer expired, auto-dropping")
+                self._state_timer = None  # Prevent self-cancellation
                 await self._enter_state(TurnState.DROPPING)
+        except asyncio.CancelledError:
+            pass
+
+    async def _drop_hold_timeout(self, seconds: float):
+        """Safety: auto-release drop after max hold time."""
+        try:
+            await asyncio.sleep(seconds)
+            if self.state == TurnState.DROPPING:
+                logger.info("Drop hold timeout, auto-releasing")
+                await self.gpio.drop_off()
+                self._state_timer = None  # Prevent self-cancellation
+                await self._enter_state(TurnState.POST_DROP)
         except asyncio.CancelledError:
             pass
 
@@ -259,6 +284,7 @@ class StateMachine:
             if self.state == TurnState.POST_DROP:
                 self.gpio.unregister_win_callback()
                 logger.info("Post-drop timeout, no win")
+                self._state_timer = None  # Prevent self-cancellation
                 if self.current_try < self.settings.tries_per_player:
                     await self._start_try()
                 else:

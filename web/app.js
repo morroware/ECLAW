@@ -275,15 +275,29 @@
     }
   });
 
-  // -- Drop Buttons ---------------------------------------------------------
+  // -- Drop Buttons (hold to drop, release to stop) ------------------------
 
-  $("#drop-btn-desktop").addEventListener("click", () => {
-    if (controlSocket) controlSocket.drop();
-  });
+  function setupDropButton(btn) {
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      btn.setPointerCapture(e.pointerId);
+      if (controlSocket) controlSocket.dropStart();
+    });
+    btn.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      if (controlSocket) controlSocket.dropStop();
+    });
+    btn.addEventListener("pointercancel", () => {
+      if (controlSocket) controlSocket.dropStop();
+    });
+    btn.addEventListener("pointerleave", () => {
+      if (controlSocket) controlSocket.dropStop();
+    });
+    btn.style.touchAction = "none";
+  }
 
-  $("#drop-btn-mobile").addEventListener("click", () => {
-    if (controlSocket) controlSocket.drop();
-  });
+  setupDropButton($("#drop-btn-desktop"));
+  setupDropButton($("#drop-btn-mobile"));
 
   // -- Play Again -----------------------------------------------------------
 
