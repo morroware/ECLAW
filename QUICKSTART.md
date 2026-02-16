@@ -268,6 +268,13 @@ Then: `sudo systemctl restart mediamtx`
 
 ---
 
+
+For internet-facing demos, run the offline readiness audit before opening traffic:
+
+```bash
+./scripts/internet_readiness_audit.sh --env /opt/claw/.env --nginx /etc/nginx/sites-enabled/claw.conf
+```
+
 ## Demo Day Checklist
 
 Before the demo:
@@ -279,6 +286,7 @@ Before the demo:
 - [ ] You can join the queue and complete a full game cycle
 - [ ] GPIO pins are driving the claw relays correctly
 - [ ] ADMIN_API_KEY has been changed from "changeme"
+- [ ] CORS_ALLOWED_ORIGINS is set to your public domain (not `*`)
 - [ ] Note down the Pi's IP to share with demo attendees
 
 During the demo:

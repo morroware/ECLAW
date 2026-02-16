@@ -96,6 +96,7 @@ make demo-pi          # Demo on Pi 5 (short timers, real GPIO)
 make test             # Run test suite
 make simulate         # Simulate 3 players
 make status           # Health check
+make audit-internet   # Offline internet-readiness config audit
 make logs             # Tail server logs
 make restart          # Restart all services
 make db-reset         # Reset database
@@ -115,6 +116,7 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 | `TURN_TIME_SECONDS` | `90` | Hard limit for entire turn |
 | `ADMIN_API_KEY` | `changeme` | **Change this in production** |
 | `PORT` | `8000` | Server listen port |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API |
 
 For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
 

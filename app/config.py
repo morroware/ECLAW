@@ -1,6 +1,7 @@
 """Configuration via Pydantic Settings, loaded from .env file."""
 
 import os
+from functools import cached_property
 from pydantic_settings import BaseSettings
 
 
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
     port: int = 8000
     database_path: str = "./data/claw.db"
     admin_api_key: str = "changeme"
+    cors_allowed_origins: str = "http://localhost,http://127.0.0.1"
 
     # Watchdog
     watchdog_health_url: str = "http://127.0.0.1:8000/api/health"
@@ -61,6 +63,11 @@ class Settings(BaseSettings):
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
+
+    @cached_property
+    def cors_origins(self) -> list[str]:
+        origins = [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+        return origins or ["http://localhost", "http://127.0.0.1"]
 
 
 settings = Settings()
