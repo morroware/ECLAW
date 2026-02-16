@@ -28,10 +28,10 @@ OPPOSING = {
 class MockOutputDevice:
     """Simulates a GPIO output device for PoC/testing."""
 
-    def __init__(self, pin: int, initial_value: bool = False):
+    def __init__(self, pin: int, active_high: bool = True, initial_value: bool = False):
         self.pin = pin
         self.value = initial_value
-        logger.debug(f"[MOCK] OutputDevice created on pin {pin}")
+        logger.debug(f"[MOCK] OutputDevice created on pin {pin} (active_high={active_high})")
 
     def on(self):
         self.value = True
@@ -95,8 +95,9 @@ class GPIOController:
             OutputDevice = RealOutputDevice
             InputDevice = DigitalInputDevice
 
+        active_high = not settings.relay_active_low
         for name, pin in pin_map.items():
-            self._outputs[name] = OutputDevice(pin, initial_value=False)
+            self._outputs[name] = OutputDevice(pin, active_high=active_high, initial_value=False)
             self._last_pulse[name] = 0.0
 
         if settings.mock_gpio:
