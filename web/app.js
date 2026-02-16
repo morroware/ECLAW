@@ -260,9 +260,6 @@
         position: data.position,
         estimated_wait_seconds: data.estimated_wait_seconds,
       });
-
-      // Connect control WebSocket
-      connectControlWs();
     } catch (e) {
       joinError.textContent = "Network error. Please try again.";
     } finally {
@@ -388,9 +385,22 @@
     if (state === "moving") {
       switchToState("active", msg);
       startMoveTimer(msg);
-    } else if (state === "dropping" || state === "post_drop") {
-      timerDisplay.textContent = "";
+      // Re-enable controls after a drop cycle (next try)
+      setControlsEnabled(true);
+    } else if (state === "dropping") {
+      timerDisplay.textContent = "DROPPING!";
+      timerDisplay.style.color = "#f59e0b";
+      $("#ctrl-timer").textContent = "DROPPING!";
+      $("#ctrl-timer").style.color = "#f59e0b";
       clearInterval(moveTimerInterval);
+      setControlsEnabled(false);
+    } else if (state === "post_drop") {
+      timerDisplay.textContent = "Checking...";
+      timerDisplay.style.color = "#60a5fa";
+      $("#ctrl-timer").textContent = "Checking...";
+      $("#ctrl-timer").style.color = "#60a5fa";
+      clearInterval(moveTimerInterval);
+      setControlsEnabled(false);
     } else if (state === "ready_prompt") {
       switchToState("ready", msg);
     } else if (state === "idle") {
@@ -404,6 +414,25 @@
     if (msg.current_try && msg.max_tries) {
       $("#ctrl-try").textContent = `Try ${msg.current_try}/${msg.max_tries}`;
       $("#try-display").textContent = `Try ${msg.current_try}/${msg.max_tries}`;
+    }
+  }
+
+  function setControlsEnabled(enabled) {
+    const dpad = $("#dpad");
+    const dropDesktop = $("#drop-btn-desktop");
+    const dropMobile = $("#drop-btn-mobile");
+    const hint = $("#keyboard-hint");
+
+    if (enabled) {
+      if (dpad) dpad.classList.remove("disabled");
+      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.textContent = "DROP (Space)"; }
+      if (dropMobile) { dropMobile.disabled = false; dropMobile.textContent = "DROP"; }
+      if (hint) hint.classList.remove("disabled");
+    } else {
+      if (dpad) dpad.classList.add("disabled");
+      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.textContent = "DROPPING..."; }
+      if (dropMobile) { dropMobile.disabled = true; dropMobile.textContent = "DROPPING..."; }
+      if (hint) hint.classList.add("disabled");
     }
   }
 

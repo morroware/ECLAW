@@ -40,6 +40,23 @@ async def _periodic_db_prune(interval_seconds: int = 3600):
             logger.exception("Periodic DB prune failed")
 
 
+async def _periodic_queue_check(sm, interval_seconds: int = 10):
+    """Safety net: periodically check if the state machine is IDLE with
+    waiting players and kick-start the queue if so.  This catches edge
+    cases where advance_queue was missed (e.g. exception in a timer task)."""
+    from app.game.state_machine import TurnState
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            if sm.state == TurnState.IDLE and sm.active_entry_id is None:
+                waiting = await sm.queue.get_waiting_count()
+                if waiting > 0:
+                    logger.info("Periodic queue check: IDLE with %d waiting, advancing", waiting)
+                    await sm.advance_queue()
+        except Exception:
+            logger.exception("Periodic queue check failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
@@ -84,6 +101,11 @@ async def lifespan(app: FastAPI):
     prune_task = asyncio.create_task(_periodic_db_prune())
     app.state.background_tasks.add(prune_task)
     prune_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Start periodic queue advancement safety net
+    queue_check_task = asyncio.create_task(_periodic_queue_check(sm))
+    app.state.background_tasks.add(queue_check_task)
+    queue_check_task.add_done_callback(app.state.background_tasks.discard)
 
     # Resume queue if entries exist
     await sm.advance_queue()

@@ -209,35 +209,42 @@ class StateMachine:
         await self.gpio.emergency_stop()
         await self.gpio.unlock()
 
-        if self.active_entry_id:
-            await self.queue.complete_entry(
-                self.active_entry_id, result, self.current_try
-            )
-            await self.ws.broadcast_turn_end(self.active_entry_id, result)
+        try:
+            if self.active_entry_id:
+                await self.queue.complete_entry(
+                    self.active_entry_id, result, self.current_try
+                )
+                await self.ws.broadcast_turn_end(self.active_entry_id, result)
 
-            # Notify the player directly
-            if self.ctrl:
-                await self.ctrl.send_to_player(self.active_entry_id, {
-                    "type": "turn_end",
-                    "result": result,
-                    "tries_used": self.current_try,
-                })
+                # Notify the player directly
+                if self.ctrl:
+                    await self.ctrl.send_to_player(self.active_entry_id, {
+                        "type": "turn_end",
+                        "result": result,
+                        "tries_used": self.current_try,
+                    })
 
-        # Broadcast updated queue status with full entry list
-        status = await self.queue.get_queue_status()
-        entries = await self.queue.list_queue()
-        queue_entries = [
-            {"name": e["name"], "state": e["state"], "position": e["position"]}
-            for e in entries
-        ]
-        await self.ws.broadcast_queue_update(status, queue_entries)
+            # Broadcast updated queue status with full entry list
+            status = await self.queue.get_queue_status()
+            entries = await self.queue.list_queue()
+            queue_entries = [
+                {"name": e["name"], "state": e["state"], "position": e["position"]}
+                for e in entries
+            ]
+            await self.ws.broadcast_queue_update(status, queue_entries)
+        except Exception:
+            logger.exception("Error during turn-end cleanup (non-fatal)")
 
+        # Always reset to IDLE regardless of cleanup errors above
         self.state = TurnState.IDLE
         self.active_entry_id = None
         self.current_try = 0
 
         # Immediately try to start the next player
-        await self.advance_queue()
+        try:
+            await self.advance_queue()
+        except Exception:
+            logger.exception("advance_queue failed after turn end (periodic check will retry)")
 
     # -- Timers --------------------------------------------------------------
 
@@ -274,6 +281,9 @@ class StateMachine:
                 await self.advance_queue()
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_ready_timeout crashed, forcing recovery")
+            await self._force_recover()
 
     async def _move_timeout(self, seconds: int):
         try:
@@ -284,6 +294,9 @@ class StateMachine:
                 await self._enter_state(TurnState.DROPPING)
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_move_timeout crashed, forcing recovery")
+            await self._force_recover()
 
     async def _drop_hold_timeout(self, seconds: float):
         """Safety: auto-release drop after max hold time."""
@@ -296,6 +309,14 @@ class StateMachine:
                 await self._enter_state(TurnState.POST_DROP)
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_drop_hold_timeout crashed, forcing recovery")
+            # Ensure drop relay is off even on error
+            try:
+                await self.gpio.drop_off()
+            except Exception:
+                pass
+            await self._force_recover()
 
     async def _post_drop_timeout(self, seconds: int):
         try:
@@ -310,6 +331,9 @@ class StateMachine:
                     await self._end_turn("loss")
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_post_drop_timeout crashed, forcing recovery")
+            await self._force_recover()
 
     async def _hard_turn_timeout(self, seconds: int):
         try:
@@ -319,6 +343,35 @@ class StateMachine:
                 await self._end_turn("expired")
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_hard_turn_timeout crashed, forcing recovery")
+            await self._force_recover()
+
+    async def _force_recover(self):
+        """Emergency recovery: force the state machine back to IDLE."""
+        try:
+            logger.warning("Force recovering state machine to IDLE")
+            if self._state_timer and not self._state_timer.done():
+                self._state_timer.cancel()
+            if self._turn_timer and not self._turn_timer.done():
+                self._turn_timer.cancel()
+            self.gpio.unregister_win_callback()
+            await self.gpio.emergency_stop()
+            await self.gpio.unlock()
+            if self.active_entry_id:
+                await self.queue.complete_entry(
+                    self.active_entry_id, "error", self.current_try
+                )
+            self.state = TurnState.IDLE
+            self.active_entry_id = None
+            self.current_try = 0
+            await self.advance_queue()
+        except Exception:
+            logger.exception("Force recovery also failed!")
+            # Last resort: just reset state so periodic check can pick it up
+            self.state = TurnState.IDLE
+            self.active_entry_id = None
+            self.current_try = 0
 
     # -- Helpers -------------------------------------------------------------
 
