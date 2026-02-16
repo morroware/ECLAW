@@ -189,6 +189,24 @@ class GPIOController:
         for d in list(self._active_holds.keys()):
             await self.direction_off(d)
 
+    # -- Drop Hold -----------------------------------------------------------
+
+    async def drop_on(self) -> bool:
+        """Turn on the drop relay (hold). Returns False if rejected."""
+        if self._locked:
+            return False
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(_executor, self._outputs["drop"].on)
+        logger.debug("Drop relay ON (hold)")
+        return True
+
+    async def drop_off(self) -> bool:
+        """Turn off the drop relay."""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(_executor, self._outputs["drop"].off)
+        logger.debug("Drop relay OFF")
+        return True
+
     # -- Pulse Outputs -------------------------------------------------------
 
     async def pulse(self, name: str) -> bool:

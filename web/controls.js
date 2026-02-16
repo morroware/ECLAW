@@ -85,7 +85,8 @@ class ControlSocket {
 
   keydown(key) { this.send({ type: "keydown", key }); }
   keyup(key) { this.send({ type: "keyup", key }); }
-  drop() { this.send({ type: "drop" }); }
+  dropStart() { this.send({ type: "drop_start" }); }
+  dropStop() { this.send({ type: "drop_stop" }); }
   readyConfirm() { this.send({ type: "ready_confirm" }); }
 
   _sendPing() {

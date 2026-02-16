@@ -103,9 +103,9 @@ class ControlHandler:
             await ws.send_text(json.dumps({"type": "latency_pong"}))
             return
 
-        # Rate limit only keydown events — keyup, drop, and ready_confirm
-        # must always pass through to avoid stuck directions or missed actions
-        if msg_type == "keydown":
+        # Rate limit only keydown/drop_start events — keyup, drop_stop,
+        # and ready_confirm must always pass through to avoid stuck relays
+        if msg_type in ("keydown", "drop_start"):
             now = time.monotonic()
             last = self._last_command_time.get(entry_id, 0)
             min_interval = 1.0 / self.settings.command_rate_limit_hz
@@ -130,8 +130,11 @@ class ControlHandler:
         elif msg_type == "keyup" and msg.get("key") in VALID_DIRECTIONS:
             await self.gpio.direction_off(msg["key"])
 
-        elif msg_type == "drop":
-            await self.sm.handle_drop(entry_id)
+        elif msg_type == "drop_start":
+            await self.sm.handle_drop_press(entry_id)
+
+        elif msg_type == "drop_stop":
+            await self.sm.handle_drop_release(entry_id)
 
         elif msg_type == "ready_confirm":
             await self.sm.handle_ready_confirm(entry_id)

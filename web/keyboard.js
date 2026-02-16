@@ -1,5 +1,5 @@
 /**
- * Desktop Keyboard Controls — WASD + Arrow Keys for movement, Space for drop.
+ * Desktop Keyboard Controls — WASD + Arrow Keys for movement, Space to drop (hold).
  */
 function setupKeyboard(controlSocket) {
   const KEY_MAP = {
@@ -20,8 +20,9 @@ function setupKeyboard(controlSocket) {
       controlSocket.keydown(dir);
       e.preventDefault();
     }
-    if (e.code === "Space") {
-      controlSocket.drop();
+    if (e.code === "Space" && !pressed.has("drop")) {
+      pressed.add("drop");
+      controlSocket.dropStart();
       e.preventDefault();
     }
   });
@@ -35,12 +36,21 @@ function setupKeyboard(controlSocket) {
       controlSocket.keyup(dir);
       e.preventDefault();
     }
+    if (e.code === "Space" && pressed.has("drop")) {
+      pressed.delete("drop");
+      controlSocket.dropStop();
+      e.preventDefault();
+    }
   });
 
   // Safety: release all on window blur
   window.addEventListener("blur", () => {
-    for (const dir of pressed) {
-      controlSocket.keyup(dir);
+    for (const key of pressed) {
+      if (key === "drop") {
+        controlSocket.dropStop();
+      } else {
+        controlSocket.keyup(key);
+      }
     }
     pressed.clear();
   });
