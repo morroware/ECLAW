@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import admin_router
 from app.api.routes import router as api_router
+from app.api.stream import router as stream_router
+from app.camera import Camera
 from app.config import settings
 from app.database import close_db, get_db
 from app.game.queue_manager import QueueManager
@@ -41,6 +43,13 @@ async def lifespan(app: FastAPI):
     await gpio.initialize()
     app.state.gpio_controller = gpio
 
+    # Init built-in camera (MJPEG fallback when MediaMTX is not running)
+    camera = Camera(device=settings.camera_device)
+    if camera.start():
+        app.state.camera = camera
+    else:
+        app.state.camera = None
+
     # Init managers
     qm = QueueManager()
     await qm.cleanup_stale(settings.turn_time_seconds * 2)
@@ -65,6 +74,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down")
+    if app.state.camera:
+        app.state.camera.stop()
     await gpio.cleanup()
     await close_db()
     logger.info("Shutdown complete")
@@ -88,6 +99,7 @@ app.add_middleware(
 # REST routes
 app.include_router(api_router)
 app.include_router(admin_router)
+app.include_router(stream_router)
 
 
 # WebSocket routes

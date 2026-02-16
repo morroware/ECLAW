@@ -73,6 +73,7 @@ sudo apt install -y \
     python3-lgpio \
     nginx sqlite3 \
     ffmpeg v4l-utils \
+    libopenblas0 libatlas-base-dev \
     curl wget 2>&1 | tail -1
 ok "System packages installed"
 
@@ -81,7 +82,7 @@ echo ""
 echo -e "${BOLD}[2/8] Creating system users...${NC}"
 sudo useradd -r -s /usr/sbin/nologin -m -d /opt/mediamtx mediamtx 2>/dev/null && ok "Created user: mediamtx" || ok "User mediamtx already exists"
 sudo useradd -r -s /usr/sbin/nologin -m -d /opt/claw claw 2>/dev/null && ok "Created user: claw" || ok "User claw already exists"
-sudo usermod -a -G gpio claw 2>/dev/null || true
+sudo usermod -a -G gpio,video claw 2>/dev/null || true
 sudo usermod -a -G video mediamtx 2>/dev/null || true
 
 # --- [3/8] Install MediaMTX ---

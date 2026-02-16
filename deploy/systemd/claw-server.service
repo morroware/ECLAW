@@ -11,7 +11,7 @@ ExecStart=/opt/claw/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
 User=claw
-SupplementaryGroups=gpio
+SupplementaryGroups=gpio video
 Environment=PYTHONUNBUFFERED=1
 TimeoutStopSec=30
 
