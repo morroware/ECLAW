@@ -188,16 +188,26 @@ class StateMachine:
 
     async def _end_turn(self, result: str):
         """Clean up and finalize the turn."""
+        # Guard against re-entry from concurrent timer callbacks.
+        # Two timers (e.g. _hard_turn_timeout and _post_drop_timeout) can
+        # both wake and enter _end_turn before either cancels the other.
+        # Setting TURN_END immediately blocks all timer state-checks.
+        if self.state in (TurnState.IDLE, TurnState.TURN_END):
+            return
+        self.state = TurnState.TURN_END
+
         logger.info(f"Turn ending: result={result}, tries={self.current_try}")
 
-        self.gpio.unregister_win_callback()
-        await self.gpio.emergency_stop()
-        await self.gpio.unlock()
-
+        # Cancel timers FIRST, before any await, to prevent the other
+        # timer from entering _end_turn during a yield.
         if self._turn_timer and not self._turn_timer.done():
             self._turn_timer.cancel()
         if self._state_timer and not self._state_timer.done():
             self._state_timer.cancel()
+
+        self.gpio.unregister_win_callback()
+        await self.gpio.emergency_stop()
+        await self.gpio.unlock()
 
         if self.active_entry_id:
             await self.queue.complete_entry(
@@ -246,7 +256,7 @@ class StateMachine:
                         "tries_used": 0,
                     })
 
-                await self.queue.set_state(entry_id, "skipped")
+                await self.queue.complete_entry(entry_id, "skipped", 0)
 
                 # Broadcast state change so all viewers see the skip
                 self.state = TurnState.IDLE

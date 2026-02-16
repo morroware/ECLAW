@@ -82,8 +82,13 @@ logger = logging.getLogger("api.routes")
 
 def check_rate_limit(key: str, max_per_hour: int):
     now = time.time()
-    _join_limits[key] = [t for t in _join_limits[key] if now - t < 3600]
-    if len(_join_limits[key]) >= max_per_hour:
+    recent = [t for t in _join_limits[key] if now - t < 3600]
+    if not recent:
+        # Remove empty entries to prevent unbounded dict growth
+        _join_limits.pop(key, None)
+    else:
+        _join_limits[key] = recent
+    if len(recent) >= max_per_hour:
         raise HTTPException(429, "Rate limit exceeded. Try again later.")
     _join_limits[key].append(now)
 
