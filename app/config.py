@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     relay_active_low: bool = True
 
     # Server
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8000
     database_path: str = "./data/claw.db"
     admin_api_key: str = "changeme"
