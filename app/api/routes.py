@@ -128,7 +128,9 @@ async def queue_leave(request: Request, authorization: str = Header(...)):
     if not raw:
         raise HTTPException(401, "Missing token")
     qm = request.app.state.queue_manager
-    await qm.leave(hash_token(raw))
+    left = await qm.leave(hash_token(raw))
+    if not left:
+        raise HTTPException(404, "No active queue entry found for this token")
     status = await qm.get_queue_status()
     entries = await qm.list_queue()
     queue_entries = [
