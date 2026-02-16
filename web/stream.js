@@ -1,5 +1,6 @@
 /**
- * WebRTC Stream Player — connects to MediaMTX via WHEP protocol.
+ * WebRTC Stream Player — connects to MediaMTX via WHEP protocol,
+ * with MJPEG fallback when MediaMTX is not running.
  */
 class StreamPlayer {
   constructor(videoElement, streamBaseUrl) {
@@ -8,9 +9,24 @@ class StreamPlayer {
     this.pc = null;
     this.sessionUrl = null;
     this._reconnecting = false;
+    this._mjpegImg = null;
   }
 
   async connect() {
+    try {
+      await this._connectWhep();
+    } catch (e) {
+      console.warn("WHEP unavailable, trying MJPEG fallback:", e.message);
+      try {
+        await this._connectMjpeg();
+      } catch (e2) {
+        console.warn("MJPEG also unavailable:", e2.message);
+        throw e2;
+      }
+    }
+  }
+
+  async _connectWhep() {
     this.pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -68,6 +84,31 @@ class StreamPlayer {
     console.log("Stream connected via WHEP");
   }
 
+  async _connectMjpeg() {
+    // Verify the MJPEG endpoint is available with a snapshot probe
+    const probe = await fetch("/api/stream/snapshot");
+    if (!probe.ok) {
+      throw new Error(`MJPEG not available: ${probe.status}`);
+    }
+
+    // Hide the <video> element and insert an <img> for MJPEG
+    const img = document.createElement("img");
+    img.id = "mjpeg-stream";
+    img.src = "/api/stream/mjpeg";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "contain";
+    img.style.position = "absolute";
+    img.style.top = "0";
+    img.style.left = "0";
+
+    this.video.style.display = "none";
+    this.video.parentNode.insertBefore(img, this.video.nextSibling);
+    this._mjpegImg = img;
+
+    console.log("Stream connected via MJPEG fallback");
+  }
+
   async reconnect() {
     this.disconnect();
     try {
@@ -87,6 +128,12 @@ class StreamPlayer {
     if (this.sessionUrl) {
       fetch(this.sessionUrl, { method: "DELETE" }).catch(() => {});
       this.sessionUrl = null;
+    }
+    if (this._mjpegImg) {
+      this._mjpegImg.src = "";
+      this._mjpegImg.remove();
+      this._mjpegImg = null;
+      this.video.style.display = "";
     }
   }
 }
