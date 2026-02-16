@@ -11,7 +11,12 @@
 logLevel: warn
 
 webrtc:
-  address: 127.0.0.1:8889
+  # Listen on ALL interfaces so ICE candidates include the LAN IP.
+  # nginx proxies /stream/ to this port for WHEP signaling; the actual
+  # WebRTC media flows over UDP/TCP on the ports below.
+  address: :8889
+  localUDPAddress: :8189
+  localTCPAddress: :8189
   iceServers:
     - url: stun:stun.l.google.com:19302
     - url: stun:stun1.l.google.com:19302
