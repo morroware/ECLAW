@@ -8,6 +8,7 @@ PYTHON   := $(VENV)/python
 PIP      := $(VENV)/pip
 UVICORN  := $(VENV)/uvicorn
 PYTEST   := $(VENV)/pytest
+HOST     ?= 0.0.0.0
 PORT     ?= 8000
 
 help: ## Show this help message
@@ -32,8 +33,8 @@ install-prod: ## Set up Pi 5 production environment
 run: ## Start dev server with mock GPIO (auto-reload)
 	MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
 
-run-prod: ## Start production server (no reload, localhost only)
-	$(UVICORN) app.main:app --host 127.0.0.1 --port $(PORT) --workers 1
+run-prod: ## Start production server (no reload)
+	$(UVICORN) app.main:app --host $(HOST) --port $(PORT) --workers 1
 
 dev: ## Start dev server and open browser
 	@echo "Starting ECLAW dev server at http://localhost:$(PORT)"
