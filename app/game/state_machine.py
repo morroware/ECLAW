@@ -52,6 +52,17 @@ class StateMachine:
 
             self.active_entry_id = next_entry["id"]
             await self.queue.set_state(next_entry["id"], "ready")
+
+            # Give the player a moment to establish their control WebSocket
+            # before entering READY_PROMPT (which starts the ready timeout).
+            # Without this delay the ready_prompt message is sent before the
+            # WS exists and gets silently dropped.
+            if self.ctrl and not self.ctrl.is_player_connected(next_entry["id"]):
+                for _ in range(20):  # wait up to ~2 s
+                    await asyncio.sleep(0.1)
+                    if self.ctrl.is_player_connected(next_entry["id"]):
+                        break
+
             await self._enter_state(TurnState.READY_PROMPT)
 
     async def handle_ready_confirm(self, entry_id: str):
@@ -71,17 +82,11 @@ class StateMachine:
         await self._start_try()
 
     async def handle_drop_press(self, entry_id: str):
-        """Called when active player presses (holds) drop."""
+        """Called when active player clicks drop. Single-click: activates the
+        relay, holds for drop_hold_max_ms, then auto-releases into POST_DROP."""
         if self.state != TurnState.MOVING or entry_id != self.active_entry_id:
             return
         await self._enter_state(TurnState.DROPPING)
-
-    async def handle_drop_release(self, entry_id: str):
-        """Called when active player releases the drop button."""
-        if self.state != TurnState.DROPPING or entry_id != self.active_entry_id:
-            return
-        await self.gpio.drop_off()
-        await self._enter_state(TurnState.POST_DROP)
 
     async def handle_win(self):
         """Called from win sensor callback (thread-safe bridged)."""
@@ -96,10 +101,9 @@ class StateMachine:
         if entry_id != self.active_entry_id:
             return
         await self.gpio.all_directions_off()
-        if self.state == TurnState.DROPPING:
-            await self.gpio.drop_off()
-            await self._enter_state(TurnState.POST_DROP)
-        logger.info(f"Active player {entry_id} disconnected, all relays OFF")
+        # Drop is now single-click with auto-release timer, so if we're in
+        # DROPPING state the _drop_hold_timeout will handle the transition.
+        logger.info(f"Active player {entry_id} disconnected, directions OFF")
 
     async def handle_disconnect_timeout(self, entry_id: str):
         """Called after grace period expires without reconnection."""
@@ -243,8 +247,13 @@ class StateMachine:
                     })
 
                 await self.queue.set_state(entry_id, "skipped")
+
+                # Broadcast state change so all viewers see the skip
                 self.state = TurnState.IDLE
                 self.active_entry_id = None
+                payload = self._build_state_payload()
+                await self.ws.broadcast_state(TurnState.IDLE, payload)
+
                 status = await self.queue.get_queue_status()
                 entries = await self.queue.list_queue()
                 queue_entries = [

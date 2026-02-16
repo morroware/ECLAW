@@ -1,5 +1,6 @@
 """Public REST API endpoints."""
 
+import asyncio
 import time
 from collections import defaultdict
 
@@ -93,14 +94,11 @@ async def queue_join(body: JoinRequest, request: Request):
     normalized_email = body.email.strip().lower()
 
     ip = request.client.host if request.client else "unknown"
-    check_rate_limit(f"ip:{ip}", 5)
-    check_rate_limit(f"email:{normalized_email}", 3)
+    check_rate_limit(f"ip:{ip}", 30)
+    check_rate_limit(f"email:{normalized_email}", 15)
 
     qm = request.app.state.queue_manager
     result = await qm.join(normalized_name, normalized_email, ip)
-
-    # Kick off queue advancement
-    await request.app.state.state_machine.advance_queue()
 
     # Broadcast updated queue to all viewers
     status = await qm.get_queue_status()
@@ -112,6 +110,11 @@ async def queue_join(body: JoinRequest, request: Request):
     await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
 
     est_wait = result["position"] * settings.turn_time_seconds
+
+    # Advance queue in background so the HTTP response returns immediately,
+    # giving the client time to establish the control WebSocket first.
+    asyncio.create_task(request.app.state.state_machine.advance_queue())
+
     return JoinResponse(
         token=result["token"],
         position=result["position"],

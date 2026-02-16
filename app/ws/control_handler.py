@@ -103,9 +103,9 @@ class ControlHandler:
             await ws.send_text(json.dumps({"type": "latency_pong"}))
             return
 
-        # Rate limit only keydown/drop_start events — keyup, drop_stop,
-        # and ready_confirm must always pass through to avoid stuck relays
-        if msg_type in ("keydown", "drop_start"):
+        # Rate limit keydown events (held directions fire rapidly).
+        # drop, keyup, and ready_confirm always pass through.
+        if msg_type == "keydown":
             now = time.monotonic()
             last = self._last_command_time.get(entry_id, 0)
             min_interval = 1.0 / self.settings.command_rate_limit_hz
@@ -132,9 +132,6 @@ class ControlHandler:
 
         elif msg_type == "drop_start":
             await self.sm.handle_drop_press(entry_id)
-
-        elif msg_type == "drop_stop":
-            await self.sm.handle_drop_release(entry_id)
 
         elif msg_type == "ready_confirm":
             await self.sm.handle_ready_confirm(entry_id)
