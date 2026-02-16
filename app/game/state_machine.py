@@ -261,6 +261,7 @@ class StateMachine:
                     for e in entries
                 ]
                 await self.ws.broadcast_queue_update(status, queue_entries)
+                self._state_timer = None  # Prevent self-cancellation
                 await self.advance_queue()
         except asyncio.CancelledError:
             pass

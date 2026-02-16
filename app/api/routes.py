@@ -12,6 +12,11 @@ from app.database import hash_token
 
 router = APIRouter(prefix="/api")
 
+# Background task set — prevents fire-and-forget tasks from being GC'd.
+# Python's event loop only keeps weak references to tasks, so we must hold
+# strong refs until they complete.
+_background_tasks: set[asyncio.Task] = set()
+
 
 # -- Models ------------------------------------------------------------------
 
@@ -113,7 +118,9 @@ async def queue_join(body: JoinRequest, request: Request):
 
     # Advance queue in background so the HTTP response returns immediately,
     # giving the client time to establish the control WebSocket first.
-    asyncio.create_task(request.app.state.state_machine.advance_queue())
+    task = asyncio.create_task(request.app.state.state_machine.advance_queue())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     return JoinResponse(
         token=result["token"],
