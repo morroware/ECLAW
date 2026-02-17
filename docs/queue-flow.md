@@ -7,7 +7,7 @@ Complete technical documentation for the ECLAW Remote Claw Machine platform.
 ## 1. System Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Internet["Internet Users (50+)"]
         B1[Browser 1<br/>Desktop / Mobile]
         B2[Browser 2]
@@ -156,11 +156,9 @@ stateDiagram-v2
     READY_PROMPT --> MOVING : Player sends ready_confirm<br/>(starts hard turn timer 90s,<br/>sets _turn_deadline)
     READY_PROMPT --> IDLE : Timeout 15s or player leaves
 
-    state "Try Loop (up to N tries)" as TryLoop {
-        MOVING --> DROPPING : Player clicks drop<br/>or move timeout (30s) auto-drops
-        DROPPING --> POST_DROP : Drop hold timeout<br/>(max 10s, relay off)
-        POST_DROP --> MOVING : No win + tries left<br/>start next try
-    }
+    MOVING --> DROPPING : Player clicks drop<br/>or move timeout (30s) auto-drops
+    DROPPING --> POST_DROP : Drop hold timeout<br/>(max 10s, relay off)
+    POST_DROP --> MOVING : No win + tries left<br/>start next try
 
     POST_DROP --> TURN_END : Win detected!<br/>result = win
     DROPPING --> TURN_END : Win detected early!<br/>result = win
@@ -173,6 +171,10 @@ stateDiagram-v2
     note right of IDLE
         Periodic safety net (10s)
         checks for stuck states
+    end note
+    note left of MOVING
+        Try loop: MOVING → DROPPING → POST_DROP
+        repeats up to N tries per turn
     end note
 ```
 
@@ -450,7 +452,7 @@ flowchart TB
 ## 8. WebSocket Message Reference
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph ControlWS["Control WebSocket /ws/control (per player)"]
         direction TB
         subgraph C2S["Client to Server"]
