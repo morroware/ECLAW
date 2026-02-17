@@ -43,8 +43,21 @@ async def _periodic_db_prune(interval_seconds: int = 3600):
 async def _periodic_queue_check(sm, interval_seconds: int = 10):
     """Safety net: periodically check if the state machine is IDLE with
     waiting players and kick-start the queue if so.  Also detects stuck
-    states where the active entry was cancelled/completed externally."""
+    states where the active entry was cancelled/completed externally,
+    and any state that has been stuck for longer than the hard maximum."""
     from app.game.state_machine import TurnState
+    import time as _time
+
+    # Hard maximum time a non-IDLE state can persist before forced recovery.
+    # This catches any edge case where timers are silently lost (GC, task
+    # cancellation, unhandled exception).  The budget is generous to avoid
+    # false positives: full turn time + ready prompt + 60 s buffer.
+    max_non_idle_seconds = (
+        settings.turn_time_seconds + settings.ready_prompt_seconds + 60
+    )
+    # TURN_END should never last more than a few seconds (GPIO cleanup).
+    max_turn_end_seconds = 30
+
     while True:
         await asyncio.sleep(interval_seconds)
         try:
@@ -64,6 +77,31 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
                 sm.active_entry_id = None
                 sm.current_try = 0
                 await sm.advance_queue()
+            elif sm.state == TurnState.TURN_END:
+                # TURN_END should resolve in seconds.  If _end_turn is stuck
+                # (e.g. GPIO hang), force the state machine back to IDLE.
+                stuck_seconds = _time.monotonic() - sm._last_state_change
+                if stuck_seconds > max_turn_end_seconds:
+                    logger.error(
+                        "Periodic queue check: stuck in TURN_END for %.0fs "
+                        "(entry=%s), forcing IDLE",
+                        stuck_seconds, sm.active_entry_id,
+                    )
+                    # Complete the entry in DB if still pending
+                    if sm.active_entry_id:
+                        try:
+                            await sm.queue.complete_entry(
+                                sm.active_entry_id, "error", sm.current_try
+                            )
+                        except Exception:
+                            logger.exception("Failed to complete stuck entry (non-fatal)")
+                    sm.state = TurnState.IDLE
+                    sm._last_state_change = _time.monotonic()
+                    sm.active_entry_id = None
+                    sm.current_try = 0
+                    sm._state_deadline = 0.0
+                    sm._turn_deadline = 0.0
+                    await sm.advance_queue()
             elif sm.state not in (TurnState.IDLE, TurnState.TURN_END) and sm.active_entry_id:
                 # Check if the active entry has been externally terminated
                 # (e.g. cancelled via leave, or completed by a race condition).
@@ -77,6 +115,19 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
                         sm.state,
                     )
                     await sm._force_recover()
+                else:
+                    # General stuck-state detector: if ANY non-IDLE state has
+                    # persisted longer than the hard maximum, all timers have
+                    # failed — force recovery.
+                    stuck_seconds = _time.monotonic() - sm._last_state_change
+                    if stuck_seconds > max_non_idle_seconds:
+                        logger.error(
+                            "Periodic queue check: state %s stuck for %.0fs "
+                            "(entry=%s), exceeds hard max of %ds — forcing recovery",
+                            sm.state, stuck_seconds,
+                            sm.active_entry_id, max_non_idle_seconds,
+                        )
+                        await sm._force_recover()
         except Exception:
             logger.exception("Periodic queue check failed")
 
