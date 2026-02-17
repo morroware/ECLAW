@@ -1,5 +1,6 @@
 """WebSocket Status Hub — broadcast-only channel for all viewers."""
 
+import asyncio
 import json
 import logging
 
@@ -32,15 +33,20 @@ class StatusHub:
         logger.info(f"Status viewer disconnected ({len(self._clients)} total)")
 
     async def broadcast(self, message: dict):
-        """Send a message to all connected status viewers."""
+        """Send a message to all connected status viewers concurrently."""
+        if not self._clients:
+            return
         payload = json.dumps(message)
         dead = set()
-        for ws in self._clients:
+
+        async def _send(ws: WebSocket):
             try:
                 if ws.client_state == WebSocketState.CONNECTED:
                     await ws.send_text(payload)
             except Exception:
                 dead.add(ws)
+
+        await asyncio.gather(*[_send(ws) for ws in self._clients])
         self._clients -= dead
 
     async def broadcast_state(self, state, payload: dict):

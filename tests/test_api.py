@@ -183,6 +183,16 @@ async def test_join_rate_limit_normalizes_email(api_client):
             json={"name": f"Player{i}", "email": email},
         )
         assert res.status_code == 200
+        # Leave queue so the next join with the same (normalized) email is allowed.
+        # Allow background advance_queue task to settle before leaving.
+        token = res.json()["token"]
+        await asyncio.sleep(0.05)
+        await api_client.delete(
+            "/api/queue/leave",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        # Let state machine finish cleanup (force_end_turn -> advance_queue)
+        await asyncio.sleep(0.05)
 
     # 12 pre-filled + 3 joins = 15 total; next should be blocked
     blocked = await api_client.post(
@@ -190,6 +200,23 @@ async def test_join_rate_limit_normalizes_email(api_client):
         json={"name": "Player3", "email": "demo@example.com"},
     )
     assert blocked.status_code == 429
+
+
+@pytest.mark.anyio
+async def test_duplicate_queue_entry_blocked(api_client):
+    """Joining with the same email while already in the queue returns 409."""
+    res = await api_client.post(
+        "/api/queue/join",
+        json={"name": "Alice", "email": "alice@example.com"},
+    )
+    assert res.status_code == 200
+
+    # Second join with the same (normalized) email should be rejected
+    dup = await api_client.post(
+        "/api/queue/join",
+        json={"name": "Alice2", "email": "Alice@Example.com"},
+    )
+    assert dup.status_code == 409
 
 
 

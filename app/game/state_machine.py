@@ -89,12 +89,19 @@ class StateMachine:
         await self._enter_state(TurnState.DROPPING)
 
     async def handle_win(self):
-        """Called from win sensor callback (thread-safe bridged)."""
-        if self.state != TurnState.POST_DROP:
+        """Called from win sensor callback (thread-safe bridged).
+
+        Accepts wins during both DROPPING and POST_DROP.  Some claw machines
+        trigger the win sensor while the claw is still retracting (DROPPING).
+        """
+        if self.state == TurnState.DROPPING:
+            logger.info("WIN DETECTED during DROPPING — ending turn early")
+            await self._end_turn("win")
+        elif self.state == TurnState.POST_DROP:
+            logger.info("WIN DETECTED")
+            await self._end_turn("win")
+        else:
             logger.warning(f"Win trigger ignored: state is {self.state}")
-            return
-        logger.info("WIN DETECTED")
-        await self._end_turn("win")
 
     async def handle_disconnect(self, entry_id: str):
         """Called when active player's WebSocket disconnects."""
@@ -161,6 +168,7 @@ class StateMachine:
 
         elif new_state == TurnState.DROPPING:
             await self.gpio.all_directions_off()
+            self.gpio.register_win_callback(self._win_bridge)
             await self.gpio.drop_on()
             self._state_timer = asyncio.create_task(
                 self._drop_hold_timeout(self.settings.drop_hold_max_ms / 1000.0)
@@ -253,32 +261,7 @@ class StateMachine:
             await asyncio.sleep(seconds)
             if self.state == TurnState.READY_PROMPT:
                 logger.info("Ready prompt timed out, skipping player")
-                entry_id = self.active_entry_id
-
-                # Notify the skipped player before clearing active_entry_id
-                if self.ctrl and entry_id:
-                    await self.ctrl.send_to_player(entry_id, {
-                        "type": "turn_end",
-                        "result": "skipped",
-                        "tries_used": 0,
-                    })
-
-                await self.queue.complete_entry(entry_id, "skipped", 0)
-
-                # Broadcast state change so all viewers see the skip
-                self.state = TurnState.IDLE
-                self.active_entry_id = None
-                payload = self._build_state_payload()
-                await self.ws.broadcast_state(TurnState.IDLE, payload)
-
-                status = await self.queue.get_queue_status()
-                entries = await self.queue.list_queue()
-                queue_entries = [
-                    {"name": e["name"], "state": e["state"], "position": e["position"]}
-                    for e in entries
-                ]
-                await self.ws.broadcast_queue_update(status, queue_entries)
-                await self.advance_queue()
+                await self._end_turn("skipped")
         except asyncio.CancelledError:
             pass
         except Exception:
