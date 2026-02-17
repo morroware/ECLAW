@@ -60,9 +60,24 @@ class StateMachine:
         they are skipped immediately instead of waiting for the full ready
         timeout.  Players who joined very recently (< 30 s) get the normal
         ready-prompt flow because their WebSocket may still be connecting.
+
+        The ~2 s WebSocket connection wait runs *outside* ``_advance_lock``
+        to minimise lock hold time.  Under burst conditions this prevents
+        the lock from being held for seconds while we poll for a connection.
+        The candidate is re-validated under the lock before any mutation.
         """
         if self._loop is None:
             self._loop = asyncio.get_running_loop()
+
+        # Pre-flight: wait for the likely next candidate's WebSocket
+        # connection *outside* the lock so we don't inflate lock hold time.
+        # This is best-effort — the candidate is re-validated under the lock.
+        candidate = await self.queue.peek_next_waiting()
+        if candidate and self.ctrl and not self.ctrl.is_player_connected(candidate["id"]):
+            for _ in range(20):  # wait up to ~2 s
+                await asyncio.sleep(0.1)
+                if self.ctrl.is_player_connected(candidate["id"]):
+                    break
 
         async with self._advance_lock:
             if self.state != TurnState.IDLE:
@@ -74,14 +89,6 @@ class StateMachine:
                 next_entry = await self.queue.peek_next_waiting()
                 if next_entry is None:
                     return
-
-                # Give the player a moment to establish their control WebSocket
-                # before deciding whether to skip or prompt.
-                if self.ctrl and not self.ctrl.is_player_connected(next_entry["id"]):
-                    for _ in range(20):  # wait up to ~2 s
-                        await asyncio.sleep(0.1)
-                        if self.ctrl.is_player_connected(next_entry["id"]):
-                            break
 
                 # If still not connected, check how long they've been in the
                 # queue.  Players who joined > 30 s ago and have no WebSocket

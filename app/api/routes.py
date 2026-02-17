@@ -79,7 +79,11 @@ class HealthResponse(BaseModel):
     uptime_seconds: float
 
 
-# -- Rate Limiting (in-memory) -----------------------------------------------
+# -- Rate Limiting -----------------------------------------------------------
+#
+# Primary rate limiter uses SQLite (durable across restarts, consistent
+# across workers).  A fast in-memory cache is kept as a hot-path
+# optimisation — the DB is the source of truth.
 
 _join_limits: dict[str, list[float]] = defaultdict(list)
 _last_rate_limit_sweep: float = 0.0
@@ -95,6 +99,7 @@ def _get_client_ip(request: Request) -> str:
 
 
 def check_rate_limit(key: str, max_per_hour: int):
+    """In-memory rate limiter (legacy, used as fast-path cache)."""
     global _last_rate_limit_sweep
     now = time.time()
 
@@ -113,6 +118,49 @@ def check_rate_limit(key: str, max_per_hour: int):
     if len(recent) >= max_per_hour:
         raise HTTPException(429, "Rate limit exceeded. Try again later.")
     _join_limits[key].append(now)
+
+
+async def check_rate_limit_db(key: str, max_per_hour: int):
+    """SQLite-backed rate limiter — durable across restarts.
+
+    Counts rows for ``key`` created within the last hour.  If the count
+    meets or exceeds ``max_per_hour``, raises HTTP 429.  Otherwise
+    inserts a new timestamp row.
+    """
+    import app.database as _db_mod
+    db = await _db_mod.get_db()
+    _db_mod._ensure_locks()
+
+    async with _db_mod._write_lock:
+        async with db.execute(
+            "SELECT COUNT(*) FROM rate_limits "
+            "WHERE key = ? AND ts > datetime('now', '-1 hour')",
+            (key,),
+        ) as cur:
+            row = await cur.fetchone()
+            count = row[0] if row else 0
+
+        if count >= max_per_hour:
+            raise HTTPException(429, "Rate limit exceeded. Try again later.")
+
+        await db.execute(
+            "INSERT INTO rate_limits (key) VALUES (?)",
+            (key,),
+        )
+        await db.commit()
+
+
+async def prune_rate_limits(max_age_seconds: int = 3600):
+    """Delete rate limit records older than max_age_seconds."""
+    import app.database as _db_mod
+    db = await _db_mod.get_db()
+    _db_mod._ensure_locks()
+    async with _db_mod._write_lock:
+        await db.execute(
+            "DELETE FROM rate_limits WHERE ts < datetime('now', ?)",
+            (f"-{max_age_seconds} seconds",),
+        )
+        await db.commit()
 
 
 # -- Endpoints ---------------------------------------------------------------
@@ -138,8 +186,11 @@ async def queue_join(body: JoinRequest, request: Request):
     normalized_email = body.email.strip().lower()
 
     ip = _get_client_ip(request)
+    # Fast in-memory check first (hot path), then durable DB check
     check_rate_limit(f"ip:{ip}", 30)
     check_rate_limit(f"email:{normalized_email}", 15)
+    await check_rate_limit_db(f"ip:{ip}", 30)
+    await check_rate_limit_db(f"email:{normalized_email}", 15)
 
     qm = request.app.state.queue_manager
     try:
