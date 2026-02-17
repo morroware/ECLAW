@@ -178,20 +178,24 @@ async def queue_leave(request: Request, authorization: str = Header(...)):
     qm = request.app.state.queue_manager
     token_hash = hash_token(raw)
 
-    # Look up entry before leaving so we can check if it's the active player
+    # Look up entry first so we can route active vs waiting/ready correctly
     entry = await qm.get_by_token(token_hash)
-
-    left = await qm.leave(token_hash)
-    if not left:
+    if not entry or entry["state"] in ("done", "cancelled"):
         raise HTTPException(404, "No active queue entry found for this token")
 
-    # If the leaving player was the current active entry (e.g., in READY_PROMPT),
-    # immediately skip them so the queue doesn't wait for the ready timeout.
     sm = request.app.state.state_machine
-    if entry and entry["id"] == sm.active_entry_id:
+
+    # If the player is the current active/ready entry, force-end their turn.
+    # This MUST be checked before qm.leave() because leave() only handles
+    # waiting/ready DB states — an active player would wrongly get 404.
+    if entry["id"] == sm.active_entry_id:
         await sm.force_end_turn("cancelled")
     else:
-        # Only broadcast manually if force_end_turn didn't already do it
+        left = await qm.leave(token_hash)
+        if not left:
+            raise HTTPException(404, "No active queue entry found for this token")
+
+        # Broadcast updated queue to all viewers
         status = await qm.get_queue_status()
         entries = await qm.list_queue()
         queue_entries = [

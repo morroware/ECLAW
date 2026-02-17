@@ -7,6 +7,7 @@
 
   // -- State ----------------------------------------------------------------
   let token = null;
+  let playerName = null; // Name used when joining — for matching in queue updates
   let playerState = null; // null, 'waiting', 'ready', 'active', 'done'
   let controlSocket = null;
   let statusWs = null;
@@ -41,8 +42,10 @@
 
   // Try to restore session from localStorage
   const savedToken = localStorage.getItem("eclaw_token");
+  const savedName = localStorage.getItem("eclaw_name");
   if (savedToken) {
     token = savedToken;
+    playerName = savedName;
     checkSession(token);
   }
 
@@ -83,6 +86,19 @@
         // Real-time queue list update from WebSocket
         if (msg.entries) {
           renderQueueList(msg.entries);
+
+          // Update the waiting panel's position if the player is in the queue.
+          // The entries are ordered: active/ready first, then waiting by position.
+          if (playerState === "waiting" && playerName) {
+            let waitingIndex = 0;
+            for (const entry of msg.entries) {
+              if (entry.state === "waiting") waitingIndex++;
+              if (entry.name === playerName && entry.state === "waiting") {
+                $("#wait-position").textContent = waitingIndex;
+                break;
+              }
+            }
+          }
         }
       }
 
@@ -261,7 +277,9 @@
 
       const data = await res.json();
       token = data.token;
+      playerName = name;
       localStorage.setItem("eclaw_token", token);
+      localStorage.setItem("eclaw_name", name);
 
       switchToState("waiting", {
         position: data.position,
@@ -453,7 +471,12 @@
 
   function startMoveTimer(msg) {
     clearInterval(moveTimerInterval);
-    let secondsLeft = msg.try_move_seconds || 30;
+    // Prefer server-provided remaining time (SSOT) over full duration.
+    // state_seconds_left is the actual time remaining on the server's timer,
+    // critical for correct display after WebSocket reconnection.
+    let secondsLeft = (msg.state_seconds_left != null && msg.state_seconds_left > 0)
+      ? msg.state_seconds_left
+      : (msg.try_move_seconds || 30);
 
     // Use deadline-based approach to prevent drift from setInterval inaccuracy
     const endTime = Date.now() + secondsLeft * 1000;
@@ -542,7 +565,10 @@
 
       case "ready":
         readyPanel.classList.remove("hidden");
-        if (data && data.timeout_seconds) {
+        if (data && data.state_seconds_left != null && data.state_seconds_left > 0) {
+          // SSOT: use server-provided remaining time (accurate on reconnect)
+          startReadyTimer(data.state_seconds_left);
+        } else if (data && data.timeout_seconds) {
           startReadyTimer(data.timeout_seconds);
         } else {
           startReadyTimer(15);
@@ -636,7 +662,9 @@
       controlSocket = null;
     }
     localStorage.removeItem("eclaw_token");
+    localStorage.removeItem("eclaw_name");
     token = null;
+    playerName = null;
     playerState = null;
     latencyDisplay.textContent = "";
     latencyDisplay.style.color = "";
