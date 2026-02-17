@@ -12,6 +12,11 @@ logger = logging.getLogger("ws.status")
 
 _MAX_STATUS_VIEWERS = 500
 
+# Per-client send timeout: if a single viewer can't receive within this
+# window it is considered dead and evicted.  Prevents one stalled client
+# from blocking broadcasts to all other viewers.
+_SEND_TIMEOUT_S = 5.0
+
 
 class StatusHub:
     def __init__(self):
@@ -33,7 +38,11 @@ class StatusHub:
         logger.info(f"Status viewer disconnected ({len(self._clients)} total)")
 
     async def broadcast(self, message: dict):
-        """Send a message to all connected status viewers concurrently."""
+        """Send a message to all connected status viewers concurrently.
+
+        Each send has a per-client timeout so a single slow/stalled
+        connection cannot block delivery to the remaining viewers.
+        """
         if not self._clients:
             return
         payload = json.dumps(message)
@@ -42,7 +51,7 @@ class StatusHub:
         async def _send(ws: WebSocket):
             try:
                 if ws.client_state == WebSocketState.CONNECTED:
-                    await ws.send_text(payload)
+                    await asyncio.wait_for(ws.send_text(payload), timeout=_SEND_TIMEOUT_S)
             except Exception:
                 dead.add(ws)
 

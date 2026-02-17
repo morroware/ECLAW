@@ -2,7 +2,7 @@
 
 A full-stack platform for controlling a physical claw machine remotely over the web. Players join a queue, watch a live camera stream via WebRTC, control the claw in real-time with keyboard or touch controls, and see their results instantly.
 
-Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock GPIO for development and testing.
+Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock GPIO for development and testing. Designed and tested for **50+ concurrent internet users**.
 
 ---
 
@@ -31,7 +31,7 @@ git clone <repo-url> ECLAW && cd ECLAW
 ./install.sh pi
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for detailed step-by-step instructions including wiring guide, camera setup, demo day checklist, and troubleshooting.
+See **[QUICKSTART.md](QUICKSTART.md)** for detailed step-by-step instructions including wiring guide, camera setup, internet deployment, and troubleshooting.
 
 ---
 
@@ -40,9 +40,11 @@ See **[QUICKSTART.md](QUICKSTART.md)** for detailed step-by-step instructions in
 ```
 Player's Phone/Laptop
         |
-    HTTP + WebSocket
+    HTTPS + WSS
         |
-   nginx (port 80)
+   nginx (port 443)
+   rate limiting + TLS
+   connection limiting
     /           \
 FastAPI        MediaMTX
 (game server)  (camera stream)
@@ -78,9 +80,10 @@ migrations/             SQLite schema
 deploy/                 nginx, systemd, MediaMTX configs
 scripts/                Dev tools, health check, GPIO test, player simulator
 tests/                  pytest test suite
+docs/                   Architecture diagrams & protocol reference
 install.sh              One-command setup (dev / pi / demo / test)
 Makefile                Common commands
-QUICKSTART.md           Detailed setup and demo guide
+QUICKSTART.md           Detailed setup, wiring, and deployment guide
 ```
 
 ---
@@ -116,7 +119,7 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 | `TURN_TIME_SECONDS` | `90` | Hard limit for entire turn |
 | `ADMIN_API_KEY` | `changeme` | **Change this in production** |
 | `PORT` | `8000` | Server listen port |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
 
 For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
 
@@ -125,7 +128,7 @@ cp .env.demo .env
 # or: ECLAW_ENV_FILE=.env.demo make run
 ```
 
-Full configuration reference is in `.env.example`.
+Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/queue-flow.md#13-configuration-reference).
 
 ---
 
@@ -156,10 +159,51 @@ Full configuration reference is in `.env.example`.
 
 ### WebSockets
 
-- `/ws/status` — Broadcast to all viewers (queue updates, state changes)
+- `/ws/status` — Broadcast to all viewers (queue updates, state changes, keepalive pings)
 - `/ws/control` — Authenticated player channel (auth, controls, results)
 
 Interactive API docs available at `/api/docs` (Swagger UI).
+
+---
+
+## Internet Deployment (50+ Users)
+
+ECLAW is designed to serve 50+ concurrent internet users from a single Raspberry Pi 5. The architecture includes:
+
+### Built-in Protection Layers
+
+| Layer | Protection |
+|-------|-----------|
+| **nginx rate limiting** | 10 req/s per IP (API), 3 req/min per IP (queue join) |
+| **nginx connection limiting** | 30 connections per IP max |
+| **Application rate limiting** | 15 joins/hr per email, 30 joins/hr per IP, 25 Hz command rate |
+| **WebSocket limits** | 500 status viewers, 100 control connections, 1024-byte message max |
+| **Broadcast timeout** | 5s per-client send timeout prevents slow viewers from blocking others |
+| **TLS + security headers** | HSTS, CSP, X-Frame-Options, X-Content-Type-Options |
+| **Admin IP restriction** | Admin endpoints only accessible from private networks |
+
+### Pre-deployment Checklist
+
+Before opening to the internet:
+
+1. Change `ADMIN_API_KEY` from `changeme` to a strong random value
+2. Set `CORS_ALLOWED_ORIGINS` to your domain (e.g., `https://claw.yourdomain.com`)
+3. Set up TLS certificates (Let's Encrypt recommended)
+4. Update `server_name` in `deploy/nginx/claw.conf` to your domain
+5. Run `./scripts/internet_readiness_audit.sh` to verify configuration
+6. Consider putting Cloudflare or a similar WAF in front for DDoS protection
+
+### Capacity
+
+| Resource | Capacity |
+|----------|----------|
+| Concurrent viewers (WebSocket) | 500 |
+| Concurrent queued players | 100 (WebSocket), unlimited (queue depth) |
+| Video stream (WebRTC) | Handled by MediaMTX, efficient per-viewer |
+| Video stream (MJPEG fallback) | 20 concurrent streams max |
+| API throughput | 10 req/s per IP with burst of 20 |
+
+See [docs/queue-flow.md](docs/queue-flow.md) for the complete architecture reference, flow charts, protocol documentation, and scaling analysis.
 
 ---
 
@@ -195,13 +239,16 @@ make status           # Health check against running server
 
 ## Safety
 
-ECLAW includes multiple safety layers:
+ECLAW includes multiple safety layers to prevent hardware damage and ensure fair play:
 
-- **State machine timeouts** — auto-drop if player is idle, hard turn timeout
+- **State machine timeouts** — auto-drop if player is idle, hard turn timeout (90s), ready timeout (15s)
 - **Emergency stop** — admin endpoint locks all GPIO immediately
-- **Watchdog process** — independent monitor that forces GPIO off if the server crashes
-- **Rate limiting** — prevents input flooding (25 Hz max)
+- **Watchdog process** — independent monitor that forces GPIO off if the server crashes (3 consecutive health check failures)
+- **Rate limiting** — prevents input flooding (25 Hz max commands, nginx edge rate limiting)
 - **Direction conflict handling** — prevents opposing directions simultaneously
+- **Disconnect recovery** — directions released immediately on disconnect, 300s grace period for reconnection
+- **Periodic safety net** — checks every 10s for stuck states and auto-recovers
+- **Broadcast timeout** — per-client 5s send timeout prevents one slow viewer from blocking all others
 
 ---
 
@@ -210,13 +257,38 @@ ECLAW includes multiple safety layers:
 ECLAW supports two streaming modes:
 
 - **WebRTC via MediaMTX** — Primary mode. Uses Pi Camera Module or USB webcam via FFmpeg. Low-latency WebRTC stream proxied through nginx. The setup script auto-detects your camera type.
-- **Built-in MJPEG fallback** — If MediaMTX is not running (e.g., during development), the server captures directly from a USB camera via OpenCV and serves an MJPEG stream at `/api/stream/camera`. The camera auto-detects the correct `/dev/video*` device.
+- **Built-in MJPEG fallback** — If MediaMTX is not running (e.g., during development), the server captures directly from a USB camera via OpenCV and serves an MJPEG stream at `/api/stream/mjpeg`. Max 20 concurrent streams (enforced via semaphore).
+
+---
+
+## Documentation
+
+- **[QUICKSTART.md](QUICKSTART.md)** — Step-by-step setup, wiring, camera configuration, and troubleshooting
+- **[docs/queue-flow.md](docs/queue-flow.md)** — Complete architecture reference with Mermaid flow charts:
+  - System architecture diagram
+  - Queue entry lifecycle (database states)
+  - State machine turn flow
+  - Player join & turn sequence diagram
+  - Page refresh & reconnection flow
+  - Disconnect & recovery flow
+  - Safety nets & recovery architecture
+  - WebSocket message reference
+  - REST API reference
+  - Database schema (ER diagram)
+  - Authentication & security measures
+  - Scaling analysis for 50+ users
+  - Full configuration reference
+  - Hardware wiring diagram
+  - Deployment architecture
+  - Frontend architecture
+  - Reconnection behavior
 
 ---
 
 ## Known Limitations
 
-- Rate limiting is in-memory (single process) — fine for one Pi
+- Rate limiting is in-memory (single process) — nginx handles edge rate limiting for production
 - Frontend is vanilla JS with no build tooling (intentional simplicity)
-- CORS is permissive (`*`) by default — restrict for internet-facing deployment
+- Single uvicorn worker (required for GPIO ownership and shared state) — async handles concurrency
+- SQLite is the only supported database (sufficient for single-machine deployment)
 - Built-in MJPEG fallback requires `opencv-python-headless` and a USB camera (not Pi Camera CSI)
