@@ -33,6 +33,7 @@ class StateMachine:
         self._paused = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._advance_lock = asyncio.Lock()
+        self._transition_lock = asyncio.Lock()
 
         # SSOT deadline tracking — monotonic timestamps for computing remaining time.
         # These are set when entering timed states and cleared on state exit.
@@ -176,7 +177,8 @@ class StateMachine:
         """Called when active player's WebSocket disconnects."""
         if entry_id != self.active_entry_id:
             return
-        await self.gpio.all_directions_off()
+        if not await self.gpio.all_directions_off():
+            logger.error("Failed to release one or more directions on disconnect")
         # Drop is now single-click with auto-release timer, so if we're in
         # DROPPING state the _drop_hold_timeout will handle the transition.
         logger.info(f"Active player {entry_id} disconnected, directions OFF")
@@ -228,9 +230,13 @@ class StateMachine:
         elif new_state == TurnState.DROPPING:
             drop_secs = self.settings.drop_hold_max_ms / 1000.0
             self._state_deadline = time.monotonic() + drop_secs
-            await self.gpio.all_directions_off()
+            if not await self.gpio.all_directions_off():
+                logger.error("Failed to release directions while entering DROPPING")
             self.gpio.register_win_callback(self._win_bridge)
-            await self.gpio.drop_on()
+            if not await self.gpio.drop_on():
+                logger.error("Failed to activate drop relay, forcing recovery")
+                await self._force_recover()
+                return
             self._state_timer = asyncio.create_task(
                 self._drop_hold_timeout(drop_secs)
             )
@@ -277,78 +283,83 @@ class StateMachine:
 
     async def _end_turn(self, result: str):
         """Clean up and finalize the turn."""
-        # Guard against re-entry from concurrent timer callbacks.
-        # Two timers (e.g. _hard_turn_timeout and _post_drop_timeout) can
-        # both wake and enter _end_turn before either cancels the other.
-        # Setting TURN_END immediately blocks all timer state-checks.
-        if self.state in (TurnState.IDLE, TurnState.TURN_END):
-            return
-        self.state = TurnState.TURN_END
-        self._last_state_change = time.monotonic()
+        should_advance = False
+        async with self._transition_lock:
+            # Guard against re-entry from concurrent timer callbacks.
+            # Two timers (e.g. _hard_turn_timeout and _post_drop_timeout) can
+            # both wake and enter _end_turn before either cancels the other.
+            # Setting TURN_END immediately blocks all timer state-checks.
+            if self.state in (TurnState.IDLE, TurnState.TURN_END):
+                return
+            self.state = TurnState.TURN_END
+            self._last_state_change = time.monotonic()
 
-        logger.info(f"Turn ending: result={result}, tries={self.current_try}")
+            logger.info(f"Turn ending: result={result}, tries={self.current_try}")
 
         # Cancel timers FIRST, before any await, to prevent the other
         # timer from entering _end_turn during a yield.
-        if self._turn_timer and not self._turn_timer.done():
-            self._turn_timer.cancel()
-        if self._state_timer and not self._state_timer.done():
-            self._state_timer.cancel()
+            if self._turn_timer and not self._turn_timer.done():
+                self._turn_timer.cancel()
+            if self._state_timer and not self._state_timer.done():
+                self._state_timer.cancel()
 
-        self.gpio.unregister_win_callback()
+            self.gpio.unregister_win_callback()
         # emergency_stop() handles its own timeouts internally via
         # _gpio_call() and auto-recovers the executor if lgpio blocks.
         # The outer wait_for is pure defense-in-depth (generous 10 s).
-        try:
-            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
-        except (asyncio.TimeoutError, Exception):
-            logger.exception("GPIO emergency_stop outer timeout — continuing cleanup")
+            try:
+                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
+            except (asyncio.TimeoutError, Exception):
+                logger.exception("GPIO emergency_stop outer timeout — continuing cleanup")
         # ALWAYS unlock GPIO.  This is the critical line that prevents
         # _locked from staying True and killing controls for every
         # subsequent player.  We set the flag directly rather than calling
         # unlock() to guarantee it succeeds even if the GPIO controller
         # is in a bad state.
-        self.gpio._locked = False
+            self.gpio._locked = False
 
-        try:
-            if self.active_entry_id:
-                await self.queue.complete_entry(
-                    self.active_entry_id, result, self.current_try
-                )
-                await self.ws.broadcast_turn_end(self.active_entry_id, result)
+            try:
+                if self.active_entry_id:
+                    await self.queue.complete_entry(
+                        self.active_entry_id, result, self.current_try
+                    )
+                    await self.ws.broadcast_turn_end(self.active_entry_id, result)
 
                 # Notify the player directly
-                if self.ctrl:
-                    await self.ctrl.send_to_player(self.active_entry_id, {
-                        "type": "turn_end",
-                        "result": result,
-                        "tries_used": self.current_try,
-                    })
+                    if self.ctrl:
+                        await self.ctrl.send_to_player(self.active_entry_id, {
+                            "type": "turn_end",
+                            "result": result,
+                            "tries_used": self.current_try,
+                        })
 
             # Broadcast updated queue status with full entry list
-            status = await self.queue.get_queue_status()
-            entries = await self.queue.list_queue()
-            queue_entries = [
-                {"name": e["name"], "state": e["state"], "position": e["position"]}
-                for e in entries
-            ]
-            await self.ws.broadcast_queue_update(status, queue_entries)
-        except Exception:
-            logger.exception("Error during turn-end cleanup (non-fatal)")
+                status = await self.queue.get_queue_status()
+                entries = await self.queue.list_queue()
+                queue_entries = [
+                    {"name": e["name"], "state": e["state"], "position": e["position"]}
+                    for e in entries
+                ]
+                await self.ws.broadcast_queue_update(status, queue_entries)
+            except Exception:
+                logger.exception("Error during turn-end cleanup (non-fatal)")
 
         # Always reset to IDLE regardless of cleanup errors above
-        self.state = TurnState.IDLE
-        self._last_state_change = time.monotonic()
-        self.active_entry_id = None
-        self.current_try = 0
-        self._state_deadline = 0.0
-        self._turn_deadline = 0.0
+            self.state = TurnState.IDLE
+            self._last_state_change = time.monotonic()
+            self.active_entry_id = None
+            self.current_try = 0
+            self._state_deadline = 0.0
+            self._turn_deadline = 0.0
+            should_advance = True
 
-        # Immediately try to start the next player
-        try:
-            await self.advance_queue()
-        except Exception:
-            logger.exception("advance_queue failed after turn end (periodic check will retry)")
+        # Immediately try to start the next player. Do this outside
+        # _transition_lock so recovery paths are never lock-starved.
+        if should_advance:
+            try:
+                await self.advance_queue()
+            except Exception:
+                logger.exception("advance_queue failed after turn end (periodic check will retry)")
 
     # -- Timers --------------------------------------------------------------
 
@@ -383,7 +394,10 @@ class StateMachine:
             await asyncio.sleep(seconds)
             if self.state == TurnState.DROPPING:
                 logger.info("Drop hold timeout, auto-releasing")
-                await self.gpio.drop_off()
+                if not await self.gpio.drop_off():
+                    logger.error("Drop hold timeout: failed to release drop relay")
+                    await self._force_recover()
+                    return
                 self._state_timer = None  # Prevent self-cancellation
                 await self._enter_state(TurnState.POST_DROP)
         except asyncio.CancelledError:
@@ -428,39 +442,47 @@ class StateMachine:
 
     async def _force_recover(self):
         """Emergency recovery: force the state machine back to IDLE."""
-        try:
-            logger.warning("Force recovering state machine to IDLE")
-            if self._state_timer and not self._state_timer.done():
-                self._state_timer.cancel()
-            if self._turn_timer and not self._turn_timer.done():
-                self._turn_timer.cancel()
-            self.gpio.unregister_win_callback()
+        should_advance = False
+        async with self._transition_lock:
             try:
-                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
-            except (asyncio.TimeoutError, Exception):
-                logger.exception("GPIO emergency_stop failed during force recovery")
-            self.gpio._locked = False
-            if self.active_entry_id:
-                await self.queue.complete_entry(
-                    self.active_entry_id, "error", self.current_try
-                )
-            self.state = TurnState.IDLE
-            self._last_state_change = time.monotonic()
-            self.active_entry_id = None
-            self.current_try = 0
-            self._state_deadline = 0.0
-            self._turn_deadline = 0.0
-            await self.advance_queue()
-        except Exception:
-            logger.exception("Force recovery also failed!")
-            # Last resort: just reset state so periodic check can pick it up
-            self.state = TurnState.IDLE
-            self._last_state_change = time.monotonic()
-            self.active_entry_id = None
-            self.current_try = 0
-            self._state_deadline = 0.0
-            self._turn_deadline = 0.0
-            self.gpio._locked = False
+                logger.warning("Force recovering state machine to IDLE")
+                if self._state_timer and not self._state_timer.done():
+                    self._state_timer.cancel()
+                if self._turn_timer and not self._turn_timer.done():
+                    self._turn_timer.cancel()
+                self.gpio.unregister_win_callback()
+                try:
+                    await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
+                except (asyncio.TimeoutError, Exception):
+                    logger.exception("GPIO emergency_stop failed during force recovery")
+                self.gpio._locked = False
+                if self.active_entry_id:
+                    await self.queue.complete_entry(
+                        self.active_entry_id, "error", self.current_try
+                    )
+                self.state = TurnState.IDLE
+                self._last_state_change = time.monotonic()
+                self.active_entry_id = None
+                self.current_try = 0
+                self._state_deadline = 0.0
+                self._turn_deadline = 0.0
+                should_advance = True
+            except Exception:
+                logger.exception("Force recovery also failed!")
+                # Last resort: just reset state so periodic check can pick it up
+                self.state = TurnState.IDLE
+                self._last_state_change = time.monotonic()
+                self.active_entry_id = None
+                self.current_try = 0
+                self._state_deadline = 0.0
+                self._turn_deadline = 0.0
+                self.gpio._locked = False
+
+        if should_advance:
+            try:
+                await self.advance_queue()
+            except Exception:
+                logger.exception("advance_queue failed after force recovery")
 
     # -- Helpers -------------------------------------------------------------
 

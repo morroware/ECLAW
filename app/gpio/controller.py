@@ -270,10 +270,19 @@ class GPIOController:
         except asyncio.CancelledError:
             pass
 
-    async def all_directions_off(self):
-        """Release all directions. Call on turn transitions."""
+    async def all_directions_off(self) -> bool:
+        """Release all directions. Call on turn transitions.
+
+        Returns ``True`` when every active direction was released
+        successfully.  If one direction fails to turn off we continue trying
+        the rest and return ``False`` so callers can escalate safety handling.
+        """
+        ok = True
         for d in list(self._active_holds.keys()):
-            await self.direction_off(d)
+            released = await self.direction_off(d)
+            if not released:
+                ok = False
+        return ok
 
     # -- Drop Hold -----------------------------------------------------------
 

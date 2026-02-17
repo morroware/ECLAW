@@ -29,16 +29,19 @@ class QueueManager:
                 if await cur.fetchone():
                     raise ValueError("You already have an active queue entry")
 
-            # Atomic position assignment: INSERT with subquery in a single statement.
-            # Use all non-terminal states for MAX(position) so positions never collide
-            # when the first waiting player advances to ready/active.
+            # Assign position relative to currently-active queue entries so
+            # line numbers stay compact instead of growing forever.
+            async with db.execute(
+                "SELECT COUNT(*) FROM queue_entries WHERE state IN ('waiting', 'ready', 'active')"
+            ) as cur:
+                next_position = (await cur.fetchone())[0] + 1
+
             await db.execute(
                 """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
-                   VALUES (?, ?, ?, ?, ?, 'waiting',
-                           COALESCE((SELECT MAX(position) FROM queue_entries
-                                     WHERE state IN ('waiting', 'ready', 'active')), 0) + 1)""",
-                (entry_id, token_h, name, email, ip),
+                   VALUES (?, ?, ?, ?, ?, 'waiting', ?)""",
+                (entry_id, token_h, name, email, ip, next_position),
             )
+            await self._resequence_positions_locked(db)
             await db.commit()
 
         # Read back the assigned position
@@ -73,6 +76,7 @@ class QueueManager:
                 "WHERE token_hash = ? AND state IN ('waiting', 'ready')",
                 (token_hash,),
             )
+            await self._resequence_positions_locked(db)
             await db.commit()
 
         await log_event(entry_id, "leave")
@@ -111,6 +115,7 @@ class QueueManager:
                 "completed_at = datetime('now') WHERE id = ?",
                 (result, tries_used, entry_id),
             )
+            await self._resequence_positions_locked(db)
             await db.commit()
 
         await log_event(entry_id, "turn_end", json.dumps({"result": result, "tries": tries_used}))
@@ -173,7 +178,29 @@ class QueueManager:
                 "completed_at = COALESCE(completed_at, datetime('now')) "
                 "WHERE state = 'ready'"
             )
+            await self._resequence_positions_locked(db)
             await db.commit()
+
+    async def _resequence_positions_locked(self, db):
+        """Renumber active queue entries to keep line positions contiguous.
+
+        Must be called while holding ``_write_lock``.
+        """
+        async with db.execute(
+            "SELECT id, position FROM queue_entries "
+            "WHERE state IN ('waiting', 'ready', 'active') "
+            "ORDER BY CASE state "
+            "  WHEN 'active' THEN 0 WHEN 'ready' THEN 1 WHEN 'waiting' THEN 2 END, "
+            "position ASC, created_at ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+
+        for idx, row in enumerate(rows, start=1):
+            if row["position"] != idx:
+                await db.execute(
+                    "UPDATE queue_entries SET position = ? WHERE id = ?",
+                    (idx, row["id"]),
+                )
 
     async def list_queue(self) -> list[dict]:
         """Return all active queue entries (waiting, ready, active) ordered by position."""

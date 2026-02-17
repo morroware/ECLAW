@@ -102,7 +102,15 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
                     sm._state_deadline = 0.0
                     sm._turn_deadline = 0.0
                     await sm.advance_queue()
-            elif sm.state not in (TurnState.IDLE, TurnState.TURN_END) and sm.active_entry_id:
+            elif sm.state not in (TurnState.IDLE, TurnState.TURN_END):
+                if not sm.active_entry_id:
+                    logger.error(
+                        "Periodic queue check: non-idle state %s without active entry, recovering",
+                        sm.state,
+                    )
+                    await sm._force_recover()
+                    continue
+
                 # Check if the active entry has been externally terminated
                 # (e.g. cancelled via leave, or completed by a race condition).
                 # If so, the state machine is stuck — force recovery.
