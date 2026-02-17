@@ -278,14 +278,28 @@ async def game_history(request: Request):
     )
 
 
+# Shared httpx client for health-check probes.  Created lazily on first
+# call and reused across requests so we don't spin up (and tear down) a
+# new TCP connection pool on every /api/health hit — important when 50+
+# viewers are polling or the watchdog checks every 2 s.
+_health_http: object = None  # httpx.AsyncClient, lazily created
+
+
+async def _get_health_http():
+    global _health_http
+    if _health_http is None:
+        import httpx
+        _health_http = httpx.AsyncClient(timeout=2)
+    return _health_http
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request):
     camera_ok = False
     try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            r = await client.get(settings.mediamtx_health_url, timeout=2)
-            camera_ok = r.status_code == 200
+        client = await _get_health_http()
+        r = await client.get(settings.mediamtx_health_url)
+        camera_ok = r.status_code == 200
     except Exception:
         pass
 

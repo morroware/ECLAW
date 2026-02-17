@@ -171,6 +171,19 @@ async def ws_status(ws: WebSocket):
     connected = await hub.connect(ws)
     if not connected:
         return
+
+    async def _keepalive():
+        """Send periodic pings so intermediate proxies and firewalls
+        don't kill idle viewer connections (important for internet users
+        behind corporate NATs or CDN edge nodes)."""
+        try:
+            while True:
+                await asyncio.sleep(30)
+                await ws.send_text('{"type":"ping"}')
+        except Exception:
+            pass
+
+    ping_task = asyncio.create_task(_keepalive())
     try:
         while True:
             await ws.receive_text()  # Keep alive; ignore messages
@@ -179,6 +192,8 @@ async def ws_status(ws: WebSocket):
     except Exception as e:
         logger.warning("Status WS error: %s", e)
         hub.disconnect(ws)
+    finally:
+        ping_task.cancel()
 
 
 @app.websocket("/ws/control")

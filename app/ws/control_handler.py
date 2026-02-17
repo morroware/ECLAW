@@ -13,6 +13,12 @@ logger = logging.getLogger("ws.control")
 
 VALID_DIRECTIONS = {"north", "south", "east", "west"}
 
+# Hard cap on total simultaneous control WebSocket connections.
+# Each queued/active player opens one.  The limit prevents resource
+# exhaustion if many unauthenticated connections arrive before the
+# 10-second auth timeout ejects them.
+_MAX_CONTROL_CONNECTIONS = 100
+
 
 class ControlHandler:
     def __init__(self, state_machine, queue_manager, gpio_controller, settings):
@@ -23,10 +29,17 @@ class ControlHandler:
         self._player_ws: dict[str, WebSocket] = {}  # entry_id -> ws
         self._last_command_time: dict[str, float] = {}  # entry_id -> monotonic
         self._grace_tasks: dict[str, asyncio.Task] = {}  # entry_id -> grace period task
+        self._total_connections: int = 0
 
     async def handle_connection(self, ws: WebSocket):
         """Handle a full control WebSocket lifecycle."""
+        if self._total_connections >= _MAX_CONTROL_CONNECTIONS:
+            await ws.accept()
+            await ws.close(1013, "Too many connections")
+            return
+
         await ws.accept()
+        self._total_connections += 1
         entry_id = None
         try:
             # First message must be auth
@@ -86,6 +99,7 @@ class ControlHandler:
         except Exception as e:
             logger.error(f"Control WS error for {entry_id}: {e}")
         finally:
+            self._total_connections = max(0, self._total_connections - 1)
             if entry_id:
                 # Only clean up if this WS is still the registered one
                 # (a new connection may have already replaced us)

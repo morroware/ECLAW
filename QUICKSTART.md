@@ -325,11 +325,131 @@ Then: `sudo systemctl restart mediamtx`
 ---
 
 
-For internet-facing demos, run the offline readiness audit before opening traffic:
+---
+
+## Internet Deployment (50+ Users)
+
+To serve ECLAW over the public internet to 50+ concurrent users, follow these steps after completing the Pi 5 setup above.
+
+### Step 1: Get a domain and TLS certificate
+
+```bash
+# Install certbot for Let's Encrypt:
+sudo apt install -y certbot python3-certbot-nginx
+
+# Obtain a certificate (replace with your domain):
+sudo certbot --nginx -d claw.yourdomain.com
+
+# Certbot auto-renews via systemd timer. Verify:
+sudo systemctl status certbot.timer
+```
+
+### Step 2: Configure nginx
+
+Edit the nginx config to use your domain:
+
+```bash
+sudo nano /etc/nginx/sites-enabled/claw.conf
+```
+
+Update `server_name` to your domain on both the HTTP and HTTPS server blocks. The certificate paths should already be set by certbot. The provided config includes:
+
+- **Rate limiting**: 10 req/s per IP (API), 3 req/min per IP (queue join)
+- **Connection limiting**: 30 connections per IP max
+- **TLS hardening**: TLS 1.2+, strong ciphers, HSTS
+- **Security headers**: CSP, X-Frame-Options, X-Content-Type-Options
+- **WebSocket proxy**: buffering disabled for real-time control
+- **Admin IP restriction**: only accessible from private networks
+- **Static asset caching**: 1-hour browser cache for JS/CSS/images
+
+Test and reload:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Step 3: Update application settings
+
+```bash
+sudo nano /opt/claw/.env
+```
+
+Set these values:
+
+```ini
+# CRITICAL: Change from default
+ADMIN_API_KEY=your-strong-random-key-here
+
+# Set to your public domain (comma-separated if multiple)
+CORS_ALLOWED_ORIGINS=https://claw.yourdomain.com
+
+# Ensure real GPIO mode on Pi
+MOCK_GPIO=false
+```
+
+Restart the server:
+
+```bash
+sudo systemctl restart claw-server
+```
+
+### Step 4: Configure your router/firewall
+
+- Forward ports **80** and **443** from your router to the Pi's local IP
+- If using Cloudflare, point your DNS A record to your public IP and enable the proxy (orange cloud)
+- WebRTC requires UDP traffic for the media stream; if behind a strict firewall, ensure STUN/TURN is reachable
+
+### Step 5: Run the readiness audit
 
 ```bash
 ./scripts/internet_readiness_audit.sh --env /opt/claw/.env --nginx /etc/nginx/sites-enabled/claw.conf
 ```
+
+This checks for common misconfigurations:
+- ADMIN_API_KEY still set to `changeme`
+- CORS_ALLOWED_ORIGINS too permissive
+- nginx TLS and security header configuration
+- Service health
+
+### Step 6: Verify from outside your network
+
+From a phone on cellular data (not your home Wi-Fi):
+
+1. Open `https://claw.yourdomain.com`
+2. Verify the video stream loads
+3. Join the queue and complete a full game cycle
+4. Check WebSocket connection (green dot in header)
+5. Verify latency display shows reasonable numbers
+
+### Capacity Reference
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Concurrent viewers | 500 | WebSocket status hub |
+| Concurrent players (queued) | 100 | WebSocket control connections |
+| Queue depth | Unlimited | SQLite handles it |
+| MJPEG streams (fallback) | 20 | Use WebRTC instead |
+| API requests | 10/s per IP | Burst of 20 |
+| Queue joins | 3/min per IP | Plus 15/hr per email |
+| Connections per IP | 30 | nginx limit_conn |
+
+### Monitoring
+
+```bash
+# Live server logs
+sudo journalctl -u claw-server -f
+
+# Admin dashboard (from Pi or local network)
+curl -H "X-Admin-Key: YOUR_KEY" http://localhost/admin/dashboard | python3 -m json.tool
+
+# System resource usage
+htop
+
+# nginx access log
+sudo tail -f /var/log/nginx/access.log
+```
+
+---
 
 ## Demo Day Checklist
 
@@ -338,12 +458,19 @@ Before the demo:
 - [ ] Pi 5 is powered and on the network
 - [ ] `./scripts/health_check.sh http://localhost` shows all green
 - [ ] Camera stream is visible at http://\<pi-ip\>:8889/cam
-- [ ] Web UI loads at http://\<pi-ip\>
+- [ ] Web UI loads at http://\<pi-ip\> (or https://your-domain.com)
 - [ ] You can join the queue and complete a full game cycle
 - [ ] GPIO pins are driving the claw relays correctly
 - [ ] ADMIN_API_KEY has been changed from "changeme"
-- [ ] CORS_ALLOWED_ORIGINS is set to your public domain (not `*`)
-- [ ] Note down the Pi's IP to share with demo attendees
+- [ ] CORS_ALLOWED_ORIGINS is set to your domain (not `*` or `localhost`)
+- [ ] Note down the Pi's IP/URL to share with demo attendees
+
+For internet-facing demos, also verify:
+
+- [ ] `./scripts/internet_readiness_audit.sh` passes
+- [ ] TLS certificate is valid (check browser padlock icon)
+- [ ] WebSocket connects over WSS (green dot in header)
+- [ ] Test from a device outside your network (e.g., phone on cellular)
 
 During the demo:
 
