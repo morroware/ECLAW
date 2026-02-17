@@ -25,7 +25,7 @@ flowchart TB
         SM[StateMachine<br/>TurnState FSM<br/>timers & transitions]
         QM[QueueManager<br/>CRUD on queue_entries]
         GPIO[GPIOController<br/>relay pins + win sensor]
-        CAM[Camera<br/>MJPEG fallback<br/>(OpenCV)]
+        CAM["Camera<br/>MJPEG fallback<br/>(OpenCV)"]
         WD[Watchdog<br/>independent process<br/>health monitor]
     end
 
