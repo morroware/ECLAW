@@ -19,6 +19,18 @@ VALID_DIRECTIONS = {"north", "south", "east", "west"}
 # 10-second auth timeout ejects them.
 _MAX_CONTROL_CONNECTIONS = 100
 
+# Per-player send timeout.  If a control socket cannot accept a message
+# within this window the connection is considered dead and evicted so
+# state-machine transitions are not blocked by network stalls.
+_SEND_TIMEOUT_S = 2.0
+
+# Keepalive interval and liveness threshold for control connections.
+# A ping is sent every _CTRL_PING_INTERVAL_S seconds.  If no pong (or
+# any message) arrives within _CTRL_LIVENESS_TIMEOUT_S the socket is
+# presumed half-open and closed proactively.
+_CTRL_PING_INTERVAL_S = 20
+_CTRL_LIVENESS_TIMEOUT_S = 60
+
 
 class ControlHandler:
     def __init__(self, state_machine, queue_manager, gpio_controller, settings):
@@ -29,6 +41,7 @@ class ControlHandler:
         self._player_ws: dict[str, WebSocket] = {}  # entry_id -> ws
         self._last_command_time: dict[str, float] = {}  # entry_id -> monotonic
         self._grace_tasks: dict[str, asyncio.Task] = {}  # entry_id -> grace period task
+        self._last_activity: dict[str, float] = {}  # entry_id -> monotonic (any msg)
         self._total_connections: int = 0
 
     async def handle_connection(self, ws: WebSocket):
@@ -90,9 +103,22 @@ class ControlHandler:
 
             logger.info(f"Player {entry_id} connected (state={entry['state']})")
 
+            # Start keepalive ping loop for liveness detection.
+            # Records last activity time and proactively closes the
+            # socket when no pong (or any message) is received within
+            # the liveness threshold.
+            self._last_activity[entry_id] = time.monotonic()
+            ping_task = asyncio.create_task(
+                self._keepalive_ping(entry_id, ws)
+            )
+
             # Main message loop
-            async for raw_msg in ws.iter_text():
-                await self._handle_message(entry_id, raw_msg, ws)
+            try:
+                async for raw_msg in ws.iter_text():
+                    self._last_activity[entry_id] = time.monotonic()
+                    await self._handle_message(entry_id, raw_msg, ws)
+            finally:
+                ping_task.cancel()
 
         except asyncio.TimeoutError:
             await ws.close(1008)
@@ -106,6 +132,7 @@ class ControlHandler:
                 if self._player_ws.get(entry_id) is ws:
                     self._player_ws.pop(entry_id, None)
                     self._last_command_time.pop(entry_id, None)
+                    self._last_activity.pop(entry_id, None)
                     if entry_id == self.sm.active_entry_id:
                         await self.sm.handle_disconnect(entry_id)
                         # Only start the long grace period for truly active
@@ -192,14 +219,61 @@ class ControlHandler:
         finally:
             self._grace_tasks.pop(entry_id, None)
 
+    async def _keepalive_ping(self, entry_id: str, ws: WebSocket):
+        """Periodic ping for control channel liveness detection.
+
+        Sends an application-level ping every _CTRL_PING_INTERVAL_S seconds.
+        If no message (including the pong reply) has been received within
+        _CTRL_LIVENESS_TIMEOUT_S, the socket is presumed half-open and
+        closed so disconnect handling fires promptly.
+        """
+        try:
+            while True:
+                await asyncio.sleep(_CTRL_PING_INTERVAL_S)
+                # Check liveness: has any message arrived recently?
+                last = self._last_activity.get(entry_id, 0)
+                if time.monotonic() - last > _CTRL_LIVENESS_TIMEOUT_S:
+                    logger.warning(
+                        "Control keepalive: no activity from %s for >%ds, closing",
+                        entry_id, _CTRL_LIVENESS_TIMEOUT_S,
+                    )
+                    try:
+                        await ws.close(1001, "Liveness timeout")
+                    except Exception:
+                        pass
+                    return
+                # Send application-level ping
+                try:
+                    await asyncio.wait_for(
+                        ws.send_text(json.dumps({"type": "ping"})),
+                        timeout=_SEND_TIMEOUT_S,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    logger.warning("Control keepalive: ping send failed for %s", entry_id)
+                    return
+        except asyncio.CancelledError:
+            pass
+
     async def send_to_player(self, entry_id: str, message: dict):
-        """Send a message to a specific player."""
+        """Send a message to a specific player.
+
+        Uses a bounded timeout so a stalled control socket cannot block
+        state-machine transitions.  On timeout or error the socket is
+        closed and evicted immediately.
+        """
         ws = self._player_ws.get(entry_id)
         if ws:
             try:
-                await ws.send_text(json.dumps(message))
-            except Exception:
-                pass
+                await asyncio.wait_for(
+                    ws.send_text(json.dumps(message)), timeout=_SEND_TIMEOUT_S
+                )
+            except (asyncio.TimeoutError, Exception):
+                logger.warning("send_to_player: evicting dead socket for %s", entry_id)
+                self._player_ws.pop(entry_id, None)
+                try:
+                    await ws.close(1001, "Send timeout")
+                except Exception:
+                    pass
 
     async def send_latency_ping(self, entry_id: str):
         await self.send_to_player(entry_id, {
