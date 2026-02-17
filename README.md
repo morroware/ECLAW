@@ -56,12 +56,13 @@ FastAPI        MediaMTX
 ```
 
 1. **Player joins** via the web UI — enters name/email, gets a queue position
-2. **Queue advances** — when it's your turn, you get a ready prompt
+2. **Queue advances** — when it's your turn, you get a ready prompt (all viewers see real-time queue updates)
 3. **Confirm ready** — the claw machine credits a coin (via GPIO pulse)
-4. **Move the claw** — WASD/arrows on desktop, touch D-pad on mobile
+4. **Move the claw** — WASD/arrows on desktop, touch D-pad on mobile (timers synced via SSOT deadlines)
 5. **Drop** — space bar or DROP button fires the drop mechanism
 6. **Win detection** — GPIO input pin checks if a prize was grabbed
 7. **Results** — win/loss displayed, next player is automatically advanced
+8. **Leave anytime** — players can leave the queue at any point, including while actively playing
 
 ---
 
@@ -139,7 +140,7 @@ Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/queue/join` | Join the queue (name + email) |
-| DELETE | `/api/queue/leave` | Leave the queue (Bearer token) |
+| DELETE | `/api/queue/leave` | Leave the queue — works in any state including active (Bearer token) |
 | GET | `/api/queue/status` | Queue length + current player |
 | GET | `/api/queue` | Full queue listing |
 | GET | `/api/session/me` | Your session state (Bearer token) |
@@ -241,14 +242,17 @@ make status           # Health check against running server
 
 ECLAW includes multiple safety layers to prevent hardware damage and ensure fair play:
 
+- **SSOT deadline tracking** — all timers backed by monotonic clock deadlines; clients receive accurate `state_seconds_left` on every state change and reconnect
+- **DB deadline persistence** — `try_move_end_at` and `turn_end_at` written to SQLite for crash recovery reference
 - **State machine timeouts** — auto-drop if player is idle, hard turn timeout (90s), ready timeout (15s)
 - **Emergency stop** — admin endpoint locks all GPIO immediately
 - **Watchdog process** — independent monitor that forces GPIO off if the server crashes (3 consecutive health check failures)
 - **Rate limiting** — prevents input flooding (25 Hz max commands, nginx edge rate limiting)
 - **Direction conflict handling** — prevents opposing directions simultaneously
-- **Disconnect recovery** — directions released immediately on disconnect, 300s grace period for reconnection
+- **Disconnect recovery** — directions released immediately on disconnect, 300s grace period for reconnection; timers continue running (no stuck queue)
 - **Periodic safety net** — checks every 10s for stuck states and auto-recovers
 - **Broadcast timeout** — per-client 5s send timeout prevents one slow viewer from blocking all others
+- **Queue broadcast on ready** — viewers see real-time queue state changes (not just join/leave/turn-end)
 
 ---
 
@@ -266,21 +270,22 @@ ECLAW supports two streaming modes:
 - **[QUICKSTART.md](QUICKSTART.md)** — Step-by-step setup, wiring, camera configuration, and troubleshooting
 - **[docs/queue-flow.md](docs/queue-flow.md)** — Complete architecture reference with Mermaid flow charts:
   - System architecture diagram
-  - Queue entry lifecycle (database states)
-  - State machine turn flow
-  - Player join & turn sequence diagram
-  - Page refresh & reconnection flow
+  - **Single Source of Truth (SSOT) design** — what is authoritative where
+  - Queue entry lifecycle (database states, including active-player leave)
+  - State machine turn flow with SSOT deadline tracking
+  - Player join & turn sequence diagram (with deadline/broadcast annotations)
+  - Page refresh & reconnection flow (with SSOT timer sync)
   - Disconnect & recovery flow
   - Safety nets & recovery architecture
-  - WebSocket message reference
+  - WebSocket message reference (with `state_seconds_left` / `turn_seconds_left` fields)
   - REST API reference
-  - Database schema (ER diagram)
+  - Database schema (ER diagram, deadline columns documented)
   - Authentication & security measures
   - Scaling analysis for 50+ users
   - Full configuration reference
   - Hardware wiring diagram
   - Deployment architecture
-  - Frontend architecture
+  - Frontend architecture (with SSOT sync details)
   - Reconnection behavior
 
 ---
@@ -292,3 +297,4 @@ ECLAW supports two streaming modes:
 - Single uvicorn worker (required for GPIO ownership and shared state) — async handles concurrency
 - SQLite is the only supported database (sufficient for single-machine deployment)
 - Built-in MJPEG fallback requires `opencv-python-headless` and a USB camera (not Pi Camera CSI)
+- `current_try` counter is in-memory only — on server restart, active entries are expired and the counter resets (by design: `cleanup_stale` handles recovery)

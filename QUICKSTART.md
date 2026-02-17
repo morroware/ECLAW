@@ -61,6 +61,7 @@ Open http://localhost:8000 in your browser. You should see the ECLAW interface w
 3. Use WASD or arrow keys to "move" the claw (mock GPIO logs movements)
 4. Press Space or click DROP to drop
 5. After the drop, you'll see a result (win/loss)
+6. You can also click "Leave Queue" at any point — even while actively playing (the turn ends immediately and the next player advances)
 
 To simulate multiple players at once:
 
@@ -583,6 +584,7 @@ make restart        # Restart all services
                   +-----------+
                        |
               HTTP + WebSocket
+              (SSOT timer sync)
                        |
                   +-----------+
                   |   nginx   |  (reverse proxy, port 80)
@@ -597,9 +599,12 @@ make restart        # Restart all services
         |       |       |     |
      Queue   State    GPIO  Camera (WebRTC or MJPEG fallback)
      (SQLite) Machine (lgpio)(rpicam/usb/opencv)
-        |       |       |
+        |     (SSOT)    |
+        |   deadlines   |
         +-------+-------+
                 |
          Physical Claw
            Machine
 ```
+
+**Single Source of Truth (SSOT):** The server's `StateMachine` tracks monotonic-clock deadlines for all timers. Every state update sent to clients includes `state_seconds_left` and `turn_seconds_left`, ensuring timers display accurately even after page refresh or network reconnection. Deadlines are also persisted to SQLite (`try_move_end_at`, `turn_end_at`) for crash recovery.
