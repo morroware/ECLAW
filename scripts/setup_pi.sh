@@ -14,6 +14,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
+# Sanity check: make sure we're in the ECLAW project root
+for required_file in requirements.txt .env.example app/main.py; do
+    if [ ! -f "$SCRIPT_DIR/$required_file" ]; then
+        echo "ERROR: Cannot find $SCRIPT_DIR/$required_file"
+        echo "This script must be run from a full ECLAW repository clone."
+        echo "  git clone <repo-url> && cd ECLAW && ./scripts/setup_pi.sh"
+        exit 1
+    fi
+done
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -119,9 +129,15 @@ echo -e "${BOLD}[4/8] Setting up /opt/claw...${NC}"
 sudo mkdir -p /opt/claw/data
 
 # Copy application files
-for dir in app migrations watchdog web; do
+for dir in app migrations watchdog; do
     sudo cp -r "$SCRIPT_DIR/$dir" /opt/claw/
 done
+# web/ may not exist yet if the frontend hasn't been built
+if [ -d "$SCRIPT_DIR/web" ]; then
+    sudo cp -r "$SCRIPT_DIR/web" /opt/claw/
+else
+    warn "web/ directory not found — frontend files not deployed"
+fi
 sudo cp "$SCRIPT_DIR/requirements.txt" /opt/claw/
 
 # Set up .env
