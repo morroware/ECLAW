@@ -108,9 +108,17 @@ clean-all: clean ## Remove venv and all generated files
 	rm -rf venv
 	@echo "Cleaned everything including virtual environment."
 
-db-reset: ## Reset the database (deletes all data)
+db-reset: ## Reset the database (deletes all data, restarts if running via systemd)
 	rm -f data/claw.db data/claw.db-wal data/claw.db-shm
-	@echo "Database deleted. It will be recreated on next server start."
+	@if systemctl is-active --quiet claw-server 2>/dev/null; then \
+		echo "Restarting claw-server to apply database reset..."; \
+		sudo systemctl restart claw-server; \
+		echo "Database reset and server restarted."; \
+	else \
+		echo "Database deleted. Restart the server for the reset to take effect."; \
+		echo "  Dev mode:  Ctrl+C then 'make run'"; \
+		echo "  systemd:   sudo systemctl restart claw-server"; \
+	fi
 
 .PHONY: audit-internet
 audit-internet: ## Run offline internet-readiness checks

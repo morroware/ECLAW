@@ -392,9 +392,10 @@ flowchart TB
 
 | Layer | Scope | Failure Mode Covered |
 |-------|-------|---------------------|
+| Ghost player skip | advance_queue | Player navigated away > 30s ago with no WebSocket: skipped instantly |
 | State machine timers | Per-turn | Player idle, relay stuck on, turn running forever |
 | Re-entry guard | _end_turn | Two timers firing simultaneously (e.g., hard timeout + post-drop) |
-| Periodic queue check | Global (10s) | SM stuck in IDLE with waiting players, or active entry externally cancelled |
+| Periodic queue check | Global (10s) | SM stuck in IDLE with waiting players, stale active_entry_id, or active entry externally cancelled |
 | _force_recover | Timer crash | Unhandled exception in any timer coroutine |
 | Grace period | Disconnect | Active player loses network/closes tab |
 | Watchdog process | System-wide | Game server crash, hang, or OOM |

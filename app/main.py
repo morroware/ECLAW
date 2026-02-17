@@ -53,6 +53,17 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
                 if waiting > 0:
                     logger.info("Periodic queue check: IDLE with %d waiting, advancing", waiting)
                     await sm.advance_queue()
+            elif sm.state == TurnState.IDLE and sm.active_entry_id is not None:
+                # Stuck state: SM is IDLE but active_entry_id wasn't cleared.
+                # This happens if advance_queue() partially executed (set
+                # active_entry_id) but crashed before entering READY_PROMPT.
+                logger.warning(
+                    "Periodic queue check: IDLE but active_entry_id=%s still set, clearing",
+                    sm.active_entry_id,
+                )
+                sm.active_entry_id = None
+                sm.current_try = 0
+                await sm.advance_queue()
             elif sm.state not in (TurnState.IDLE, TurnState.TURN_END) and sm.active_entry_id:
                 # Check if the active entry has been externally terminated
                 # (e.g. cancelled via leave, or completed by a race condition).
