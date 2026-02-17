@@ -122,18 +122,33 @@ class GPIOController:
     # -- Emergency Stop ------------------------------------------------------
 
     async def emergency_stop(self):
-        """Immediately turn all outputs OFF. Cancel all hold tasks."""
+        """Immediately turn all outputs OFF. Cancel all hold tasks.
+
+        This method is designed to NEVER raise — it logs errors internally.
+        ``_locked`` is set True at the start and must be cleared by a
+        subsequent call to ``unlock()``.
+        """
         self._locked = True
         for task in self._active_holds.values():
             task.cancel()
         self._active_holds.clear()
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._all_off)
-        logger.warning("EMERGENCY STOP: all outputs OFF")
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._all_off)
+        except Exception:
+            logger.exception("EMERGENCY STOP: _all_off failed (GPIO may be in bad state)")
+        else:
+            logger.warning("EMERGENCY STOP: all outputs OFF")
 
     def _all_off(self):
-        for dev in self._outputs.values():
-            dev.off()
+        for name, dev in self._outputs.items():
+            try:
+                dev.off()
+            except Exception:
+                # Continue turning off remaining devices even if one fails.
+                # Re-raise after the loop so the caller knows something went
+                # wrong, but at least we tried every device.
+                logger.exception("Failed to turn off GPIO device %s", name)
 
     async def unlock(self):
         self._locked = False
@@ -142,7 +157,7 @@ class GPIOController:
     # -- Direction Hold ------------------------------------------------------
 
     async def direction_on(self, direction: str) -> bool:
-        """Start holding a direction. Returns False if rejected."""
+        """Start holding a direction. Returns False if rejected or on error."""
         if self._locked or direction not in OPPOSING:
             return False
 
@@ -156,8 +171,12 @@ class GPIOController:
         if direction in self._active_holds:
             return True
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._outputs[direction].on)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._outputs[direction].on)
+        except Exception:
+            logger.exception("GPIO direction_on(%s) failed", direction)
+            return False
         logger.debug(f"Direction ON: {direction}")
 
         task = asyncio.create_task(
@@ -171,8 +190,12 @@ class GPIOController:
         if direction in self._active_holds:
             self._active_holds[direction].cancel()
             del self._active_holds[direction]
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._outputs[direction].off)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._outputs[direction].off)
+        except Exception:
+            logger.exception("GPIO direction_off(%s) failed", direction)
+            return False
         logger.debug(f"Direction OFF: {direction}")
         return True
 
@@ -193,18 +216,26 @@ class GPIOController:
     # -- Drop Hold -----------------------------------------------------------
 
     async def drop_on(self) -> bool:
-        """Turn on the drop relay (hold). Returns False if rejected."""
+        """Turn on the drop relay (hold). Returns False if rejected or on error."""
         if self._locked:
             return False
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._outputs["drop"].on)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._outputs["drop"].on)
+        except Exception:
+            logger.exception("GPIO drop_on failed")
+            return False
         logger.debug("Drop relay ON (hold)")
         return True
 
     async def drop_off(self) -> bool:
         """Turn off the drop relay."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._outputs["drop"].off)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._outputs["drop"].off)
+        except Exception:
+            logger.exception("GPIO drop_off failed")
+            return False
         logger.debug("Drop relay OFF")
         return True
 
@@ -224,8 +255,12 @@ class GPIOController:
         duration_ms = settings.coin_pulse_ms if name == "coin" else settings.drop_pulse_ms
         self._last_pulse[name] = now
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._do_pulse, name, duration_ms)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(_executor, self._do_pulse, name, duration_ms)
+        except Exception:
+            logger.exception("GPIO pulse(%s) failed", name)
+            return False
         logger.info(f"Pulse {name}: {duration_ms}ms")
         return True
 
