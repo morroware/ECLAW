@@ -298,19 +298,18 @@ class StateMachine:
         self.gpio.unregister_win_callback()
         # Timeout GPIO operations so a hanging hardware call (e.g. lgpio
         # bus lock on Pi 4) cannot block the turn-end flow forever.
+        # emergency_stop() is designed to never raise, but we still guard
+        # with a timeout in case the single-threaded executor is blocked.
         try:
             await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logger.error("GPIO emergency_stop timed out after 5s — continuing cleanup")
-        except Exception:
-            logger.exception("GPIO emergency_stop failed — continuing cleanup")
-        try:
-            await asyncio.wait_for(self.gpio.unlock(), timeout=2.0)
-        except asyncio.TimeoutError:
-            logger.error("GPIO unlock timed out after 2s — forcing unlock flag")
-            self.gpio._locked = False
-        except Exception:
-            logger.exception("GPIO unlock failed — continuing cleanup")
+        except (asyncio.TimeoutError, Exception):
+            logger.exception("GPIO emergency_stop timed out or failed — continuing cleanup")
+        # ALWAYS unlock GPIO.  This is the critical line that prevents
+        # _locked from staying True and killing controls for every
+        # subsequent player.  We set the flag directly rather than calling
+        # unlock() to guarantee it succeeds even if the GPIO controller
+        # is in a bad state.
+        self.gpio._locked = False
 
         try:
             if self.active_entry_id:
@@ -441,10 +440,7 @@ class StateMachine:
                 await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
             except (asyncio.TimeoutError, Exception):
                 logger.exception("GPIO emergency_stop failed during force recovery")
-            try:
-                await asyncio.wait_for(self.gpio.unlock(), timeout=2.0)
-            except (asyncio.TimeoutError, Exception):
-                self.gpio._locked = False
+            self.gpio._locked = False
             if self.active_entry_id:
                 await self.queue.complete_entry(
                     self.active_entry_id, "error", self.current_try
@@ -465,6 +461,7 @@ class StateMachine:
             self.current_try = 0
             self._state_deadline = 0.0
             self._turn_deadline = 0.0
+            self.gpio._locked = False
 
     # -- Helpers -------------------------------------------------------------
 

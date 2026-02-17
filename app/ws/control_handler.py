@@ -145,17 +145,27 @@ class ControlHandler:
                 await self.sm.handle_ready_confirm(entry_id)
             return
 
-        # Control messages (active player only)
+        # Control messages (active player only).
+        # GPIO operations are wrapped so that a hardware error does not crash
+        # the player's WebSocket connection — the turn continues and the
+        # periodic checker will recover if the state machine gets stuck.
         if msg_type == "keydown" and msg.get("key") in VALID_DIRECTIONS:
             if self.sm.state.value == "moving":
-                ok = await self.gpio.direction_on(msg["key"])
+                try:
+                    ok = await self.gpio.direction_on(msg["key"])
+                except Exception:
+                    logger.exception("GPIO error during direction_on")
+                    ok = False
                 await ws.send_text(json.dumps({
                     "type": "control_ack", "key": msg["key"], "active": ok
                 }))
 
         elif msg_type == "keyup" and msg.get("key") in VALID_DIRECTIONS:
             if self.sm.state.value == "moving":
-                await self.gpio.direction_off(msg["key"])
+                try:
+                    await self.gpio.direction_off(msg["key"])
+                except Exception:
+                    logger.exception("GPIO error during direction_off")
 
         elif msg_type == "drop_start":
             await self.sm.handle_drop_press(entry_id)
