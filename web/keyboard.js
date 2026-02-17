@@ -8,15 +8,33 @@
  *  - dropStart() is only sent on the first non-repeat Space press.
  *  - Direction keydowns are de-duplicated via the `pressed` set so holding a
  *    key doesn't flood the server.
+ *  - Visual feedback: highlights the matching on-screen desktop D-Pad button
+ *    when a keyboard key is held, providing immediate visual confirmation.
  */
-function setupKeyboard(controlSocket) {
+function setupKeyboard(controlSocket, sfx) {
   const KEY_MAP = {
     ArrowUp: "north", KeyW: "north",
     ArrowDown: "south", KeyS: "south",
     ArrowLeft: "west", KeyA: "west",
     ArrowRight: "east", KeyD: "east",
   };
+
+  const DIR_TO_SELECTOR = {
+    north: ".vdpad-up",
+    south: ".vdpad-down",
+    west:  ".vdpad-left",
+    east:  ".vdpad-right",
+  };
+
   const pressed = new Set();
+
+  function highlightBtn(dir, active) {
+    const btn = document.querySelector(DIR_TO_SELECTOR[dir]);
+    if (btn) {
+      if (active) btn.classList.add("active");
+      else btn.classList.remove("active");
+    }
+  }
 
   function onKeydown(e) {
     // Don't capture when typing in inputs
@@ -28,6 +46,8 @@ function setupKeyboard(controlSocket) {
       if (!pressed.has(dir)) {
         pressed.add(dir);
         controlSocket.keydown(dir);
+        highlightBtn(dir, true);
+        if (sfx) sfx.playMove();
       }
     }
 
@@ -37,6 +57,7 @@ function setupKeyboard(controlSocket) {
       e.preventDefault();
       if (!e.repeat) {
         controlSocket.dropStart();
+        if (sfx) sfx.playDrop();
       }
     }
   }
@@ -50,6 +71,7 @@ function setupKeyboard(controlSocket) {
       if (pressed.has(dir)) {
         pressed.delete(dir);
         controlSocket.keyup(dir);
+        highlightBtn(dir, false);
       }
     }
   }
@@ -58,6 +80,7 @@ function setupKeyboard(controlSocket) {
   function onBlur() {
     for (const key of pressed) {
       controlSocket.keyup(key);
+      highlightBtn(key, false);
     }
     pressed.clear();
   }
@@ -74,6 +97,7 @@ function setupKeyboard(controlSocket) {
     // Release any held directions
     for (const key of pressed) {
       controlSocket.keyup(key);
+      highlightBtn(key, false);
     }
     pressed.clear();
   };

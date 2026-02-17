@@ -1,6 +1,7 @@
 /**
- * ECLAW App — Main UI orchestration.
- * Manages application state, connects components, handles UI transitions.
+ * ECLAW App — Main UI orchestration for The Castle Fun Center.
+ * Manages application state, connects components, handles UI transitions,
+ * sound effects, visual feedback, and confetti celebrations.
  */
 (function () {
   "use strict";
@@ -17,6 +18,17 @@
   let _keyboardTeardown = null;
   let _dpadInstance = null;
   let _statusReconnectDelay = 3000;
+  let _moveEndTime = 0; // For timer bar percentage
+  let _moveStartTime = 0;
+  let _lastWarningBeep = 0; // Prevent double-beeps
+
+  // -- Sound Engine ---------------------------------------------------------
+  const sfx = new SoundEngine();
+
+  // Restore mute preference
+  if (localStorage.getItem("eclaw_muted") === "1") {
+    sfx.muted = true;
+  }
 
   // -- DOM Elements ---------------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
@@ -37,6 +49,36 @@
   const timerDisplay = $("#timer-display");
   const queueList = $("#queue-list");
   const historyList = $("#history-list");
+  const soundToggle = $("#sound-toggle");
+  const timerBar = $("#timer-bar");
+
+  // -- Sound Toggle ---------------------------------------------------------
+  function updateSoundIcon() {
+    if (!soundToggle) return;
+    soundToggle.textContent = sfx.muted ? "\u{1F507}" : "\u{1F50A}";
+    soundToggle.classList.toggle("muted", sfx.muted);
+  }
+  updateSoundIcon();
+
+  if (soundToggle) {
+    soundToggle.addEventListener("click", () => {
+      sfx.unlock();
+      sfx.toggleMute();
+      localStorage.setItem("eclaw_muted", sfx.muted ? "1" : "0");
+      updateSoundIcon();
+    });
+  }
+
+  // Unlock audio on any user interaction (required by browsers)
+  function unlockAudio() {
+    sfx.unlock();
+    document.removeEventListener("click", unlockAudio);
+    document.removeEventListener("touchstart", unlockAudio);
+    document.removeEventListener("keydown", unlockAudio);
+  }
+  document.addEventListener("click", unlockAudio);
+  document.addEventListener("touchstart", unlockAudio);
+  document.addEventListener("keydown", unlockAudio);
 
   // -- Initialization -------------------------------------------------------
 
@@ -243,7 +285,7 @@
         return `<div class="history-entry">
           <span class="history-result ${resultClass}">${resultLabel}</span>
           <span class="history-name">${escapeHtml(entry.name)}</span>
-          <span class="history-meta">${tries}${timeAgo ? " · " + timeAgo : ""}</span>
+          <span class="history-meta">${tries}${timeAgo ? " \u00B7 " + timeAgo : ""}</span>
         </div>`;
       })
       .join("");
@@ -272,6 +314,8 @@
       if (!res.ok) {
         const err = await res.json();
         joinError.textContent = err.detail || "Failed to join queue";
+        joinPanel.classList.add("shake");
+        setTimeout(() => joinPanel.classList.remove("shake"), 400);
         return;
       }
 
@@ -281,12 +325,16 @@
       localStorage.setItem("eclaw_token", token);
       localStorage.setItem("eclaw_name", name);
 
+      sfx.playJoinQueue();
+
       switchToState("waiting", {
         position: data.position,
         estimated_wait_seconds: data.estimated_wait_seconds,
       });
     } catch (e) {
       joinError.textContent = "Network error. Please try again.";
+      joinPanel.classList.add("shake");
+      setTimeout(() => joinPanel.classList.remove("shake"), 400);
     } finally {
       joinBtn.disabled = false;
       joinBtn.textContent = "Join Queue";
@@ -314,15 +362,21 @@
   $("#ready-btn").addEventListener("click", () => {
     if (controlSocket) {
       controlSocket.readyConfirm();
+      sfx.playReadyConfirm();
     }
   });
 
   // -- Drop Buttons (single click to drop) ----------------------------------
 
   function setupDropButton(btn) {
+    if (!btn) return;
     btn.addEventListener("click", (e) => {
       e.preventDefault();
-      if (controlSocket) controlSocket.dropStart();
+      if (controlSocket) {
+        controlSocket.dropStart();
+        sfx.playDrop();
+        vibrate(50);
+      }
     });
     // Prevent mousedown from giving the button focus — if the button has
     // focus, a subsequent Space press fires both the keyboard handler AND the
@@ -335,6 +389,37 @@
 
   setupDropButton($("#drop-btn-desktop"));
   setupDropButton($("#drop-btn-mobile"));
+
+  // -- Desktop Visual D-Pad Click Handling ----------------------------------
+
+  const visualDpad = $("#visual-dpad");
+  if (visualDpad) {
+    const vdpadBtns = visualDpad.querySelectorAll(".vdpad-btn[data-dir]");
+    vdpadBtns.forEach((btn) => {
+      btn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const dir = btn.dataset.dir;
+        if (controlSocket) {
+          controlSocket.keydown(dir);
+          sfx.playMove();
+        }
+        btn.classList.add("active");
+      });
+      btn.addEventListener("mouseup", (e) => {
+        e.preventDefault();
+        const dir = btn.dataset.dir;
+        if (controlSocket) controlSocket.keyup(dir);
+        btn.classList.remove("active");
+      });
+      btn.addEventListener("mouseleave", () => {
+        if (btn.classList.contains("active")) {
+          const dir = btn.dataset.dir;
+          if (controlSocket) controlSocket.keyup(dir);
+          btn.classList.remove("active");
+        }
+      });
+    });
+  }
 
   // -- Play Again -----------------------------------------------------------
 
@@ -399,12 +484,12 @@
     controlSocket.connect();
 
     // Set up keyboard controls (returns a teardown function)
-    _keyboardTeardown = setupKeyboard(controlSocket);
+    _keyboardTeardown = setupKeyboard(controlSocket, sfx);
 
     // Set up touch D-pad
     const dpad = $("#dpad");
     if (dpad) {
-      _dpadInstance = new TouchDPad(dpad, controlSocket);
+      _dpadInstance = new TouchDPad(dpad, controlSocket, sfx);
     }
   }
 
@@ -418,6 +503,10 @@
       startMoveTimer(msg);
       // Re-enable controls after a drop cycle (next try)
       setControlsEnabled(true);
+      // Sound for new try (after first)
+      if (msg.current_try && msg.current_try > 1) {
+        sfx.playNextTry();
+      }
     } else if (state === "dropping") {
       timerDisplay.textContent = "DROPPING!";
       timerDisplay.style.color = "#f59e0b";
@@ -425,6 +514,8 @@
       $("#ctrl-timer").style.color = "#f59e0b";
       clearInterval(moveTimerInterval);
       setControlsEnabled(false);
+      updateTimerBar(0);
+      sfx.playDropping();
     } else if (state === "post_drop") {
       timerDisplay.textContent = "Checking...";
       timerDisplay.style.color = "#60a5fa";
@@ -432,6 +523,7 @@
       $("#ctrl-timer").style.color = "#60a5fa";
       clearInterval(moveTimerInterval);
       setControlsEnabled(false);
+      updateTimerBar(0);
     } else if (state === "ready_prompt") {
       switchToState("ready", msg);
     } else if (state === "idle") {
@@ -450,20 +542,20 @@
 
   function setControlsEnabled(enabled) {
     const dpad = $("#dpad");
+    const vdpad = $("#visual-dpad");
     const dropDesktop = $("#drop-btn-desktop");
     const dropMobile = $("#drop-btn-mobile");
-    const hint = $("#keyboard-hint");
 
     if (enabled) {
       if (dpad) dpad.classList.remove("disabled");
-      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.textContent = "DROP (Space)"; }
+      if (vdpad) vdpad.classList.remove("disabled");
+      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.innerHTML = 'DROP<span class="key-hint">Spacebar</span>'; }
       if (dropMobile) { dropMobile.disabled = false; dropMobile.textContent = "DROP"; }
-      if (hint) hint.classList.remove("disabled");
     } else {
       if (dpad) dpad.classList.add("disabled");
-      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.textContent = "DROPPING..."; }
+      if (vdpad) vdpad.classList.add("disabled");
+      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.innerHTML = "DROPPING..."; }
       if (dropMobile) { dropMobile.disabled = true; dropMobile.textContent = "DROPPING..."; }
-      if (hint) hint.classList.add("disabled");
     }
   }
 
@@ -471,6 +563,8 @@
 
   function startMoveTimer(msg) {
     clearInterval(moveTimerInterval);
+    _lastWarningBeep = 0;
+
     // Prefer server-provided remaining time (SSOT) over full duration.
     // state_seconds_left is the actual time remaining on the server's timer,
     // critical for correct display after WebSocket reconnection.
@@ -480,10 +574,27 @@
 
     // Use deadline-based approach to prevent drift from setInterval inaccuracy
     const endTime = Date.now() + secondsLeft * 1000;
+    _moveEndTime = endTime;
+    _moveStartTime = Date.now();
 
     function tick() {
-      const left = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      const now = Date.now();
+      const msLeft = Math.max(0, endTime - now);
+      const left = Math.ceil(msLeft / 1000);
       updateTimerDisplay(left);
+
+      // Timer progress bar
+      const totalMs = _moveEndTime - _moveStartTime;
+      const pct = totalMs > 0 ? (msLeft / totalMs) * 100 : 0;
+      updateTimerBar(pct, left);
+
+      // Timer warning beeps for the last 5 seconds
+      if (left <= 5 && left > 0 && left !== _lastWarningBeep) {
+        _lastWarningBeep = left;
+        sfx.playTimerWarning(left);
+        vibrate(30);
+      }
+
       if (left <= 0) {
         clearInterval(moveTimerInterval);
       }
@@ -508,6 +619,16 @@
     } else {
       timerDisplay.style.color = "";
       $("#ctrl-timer").style.color = "";
+    }
+  }
+
+  function updateTimerBar(pct, seconds) {
+    if (!timerBar) return;
+    timerBar.style.width = Math.max(0, Math.min(100, pct)) + "%";
+    timerBar.classList.remove("danger", "warning");
+    if (seconds != null) {
+      if (seconds <= 5) timerBar.classList.add("danger");
+      else if (seconds <= 10) timerBar.classList.add("warning");
     }
   }
 
@@ -545,6 +666,7 @@
     clearInterval(moveTimerInterval);
     clearInterval(readyTimerInterval);
     timerDisplay.textContent = "";
+    updateTimerBar(0);
 
     switch (newState) {
       case null:
@@ -565,6 +687,8 @@
 
       case "ready":
         readyPanel.classList.remove("hidden");
+        sfx.playYourTurn();
+        vibrate([100, 50, 100]);
         if (data && data.state_seconds_left != null && data.state_seconds_left > 0) {
           // SSOT: use server-provided remaining time (accurate on reconnect)
           startReadyTimer(data.state_seconds_left);
@@ -598,10 +722,14 @@
             title.textContent = "YOU WON!";
             title.className = "win";
             message.textContent = "Congratulations! You grabbed a prize!";
+            sfx.playWin();
+            vibrate([100, 50, 100, 50, 200]);
+            spawnConfetti();
           } else if (result === "loss") {
             title.textContent = "No Luck";
             title.className = "loss";
             message.textContent = "Better luck next time!";
+            sfx.playLoss();
           } else {
             title.textContent = "Turn Over";
             title.className = "";
@@ -612,6 +740,41 @@
 
       default:
         joinPanel.classList.remove("hidden");
+    }
+  }
+
+  // -- Confetti Effect ------------------------------------------------------
+
+  function spawnConfetti() {
+    const container = $("#confetti-container");
+    if (!container) return;
+    const colors = ["#f59e0b", "#7c3aed", "#10b981", "#ef4444", "#3b82f6", "#ec4899"];
+    const count = 40;
+
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement("div");
+      piece.className = "confetti-piece";
+      piece.style.left = Math.random() * 100 + "%";
+      piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+      piece.style.animationDelay = (Math.random() * 1.2) + "s";
+      piece.style.animationDuration = (1.5 + Math.random() * 1.5) + "s";
+      piece.style.width = (5 + Math.random() * 6) + "px";
+      piece.style.height = (5 + Math.random() * 6) + "px";
+      piece.style.borderRadius = Math.random() > 0.5 ? "50%" : "0";
+      container.appendChild(piece);
+    }
+
+    // Clean up after animation
+    setTimeout(() => {
+      container.innerHTML = "";
+    }, 4000);
+  }
+
+  // -- Haptic Feedback ------------------------------------------------------
+
+  function vibrate(pattern) {
+    if (navigator.vibrate) {
+      try { navigator.vibrate(pattern); } catch (e) { /* ignore */ }
     }
   }
 

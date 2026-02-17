@@ -2,19 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>ECLAW — Remote Claw Machine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Play the remote claw machine live at The Castle Fun Center! Control the claw from anywhere and win real prizes.">
+  <meta name="theme-color" content="#0c0a1a">
+  <title>The Castle Fun Center — Remote Claw Machine</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
     <!-- Header -->
     <header id="header">
-      <h1>ECLAW</h1>
-      <div id="status-bar">
-        <span id="connection-status" class="status-dot disconnected"></span>
-        <span id="viewer-count">0 viewers</span>
-        <span id="latency-display"></span>
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">&#127984;</span>
+        <div class="brand-text">
+          <span class="brand-name">The Castle Fun Center</span>
+          <span class="brand-sub">Remote Claw Machine</span>
+        </div>
+      </div>
+      <div id="header-right">
+        <button id="sound-toggle" type="button" title="Toggle sound effects" aria-label="Toggle sound">&#128266;</button>
+        <div id="status-bar">
+          <span id="connection-status" class="status-dot disconnected"></span>
+          <span id="viewer-count">0</span>
+          <span id="latency-display"></span>
+        </div>
       </div>
     </header>
 
@@ -22,8 +33,10 @@
     <div id="stream-container">
       <video id="stream-video" autoplay playsinline muted></video>
       <div id="stream-overlay">
-        <div id="game-state-display"></div>
-        <div id="try-display"></div>
+        <div>
+          <div id="game-state-display"></div>
+          <div id="try-display"></div>
+        </div>
         <div id="timer-display"></div>
       </div>
     </div>
@@ -43,8 +56,8 @@
     <div id="join-panel" class="panel">
       <h2>Join the Queue</h2>
       <form id="join-form">
-        <input type="text" id="join-name" placeholder="Your name" required minlength="2" maxlength="50">
-        <input type="email" id="join-email" placeholder="Email" required>
+        <input type="text" id="join-name" placeholder="Your name" required minlength="2" maxlength="50" autocomplete="given-name">
+        <input type="email" id="join-email" placeholder="Email address" required autocomplete="email">
         <button type="submit" id="join-btn">Join Queue</button>
       </form>
       <p id="join-error" class="error"></p>
@@ -72,10 +85,33 @@
         <span id="ctrl-try">Try 1/2</span>
         <span id="ctrl-timer">30s</span>
       </div>
+      <div id="timer-bar-container"><div id="timer-bar"></div></div>
 
-      <!-- Desktop: WASD + Space -->
-      <div id="keyboard-hint" class="desktop-only">
-        Use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or Arrow Keys to move &bull; Press <kbd>Space</kbd> to drop
+      <!-- Desktop: Visual D-Pad + Keyboard hints -->
+      <div id="desktop-controls" class="desktop-only">
+        <div id="visual-dpad">
+          <div class="vdpad-btn vdpad-up" data-dir="north">
+            &#9650;
+            <span class="key-label">W</span>
+          </div>
+          <div class="vdpad-btn vdpad-left" data-dir="west">
+            &#9664;
+            <span class="key-label">A</span>
+          </div>
+          <div class="vdpad-center">MOVE</div>
+          <div class="vdpad-btn vdpad-right" data-dir="east">
+            &#9654;
+            <span class="key-label">D</span>
+          </div>
+          <div class="vdpad-btn vdpad-down" data-dir="south">
+            &#9660;
+            <span class="key-label">S</span>
+          </div>
+        </div>
+        <button id="drop-btn-desktop" class="drop-btn" tabindex="-1">
+          DROP
+          <span class="key-hint">Spacebar</span>
+        </button>
       </div>
 
       <!-- Mobile: Touch D-Pad -->
@@ -89,9 +125,6 @@
         </div>
         <button id="drop-btn-mobile" class="big-btn drop-btn" tabindex="-1">DROP</button>
       </div>
-
-      <!-- Desktop drop button -->
-      <button id="drop-btn-desktop" class="big-btn drop-btn desktop-only" tabindex="-1">DROP (Space)</button>
     </div>
 
     <!-- Turn End Panel -->
@@ -110,6 +143,10 @@
     </div>
   </div>
 
+  <!-- Confetti overlay for wins -->
+  <div id="confetti-container"></div>
+
+  <script src="sounds.js"></script>
   <script src="stream.js"></script>
   <script src="controls.js"></script>
   <script src="keyboard.js"></script>
