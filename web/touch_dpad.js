@@ -1,10 +1,12 @@
 /**
  * Touch D-Pad — Mobile touch controls with direction detection.
+ * Includes haptic feedback and sound effects.
  */
 class TouchDPad {
-  constructor(element, controlSocket) {
+  constructor(element, controlSocket, sfx) {
     this.el = element;
     this.ctrl = controlSocket;
+    this.sfx = sfx || null;
     this.activeKey = null;
 
     this.el.style.touchAction = "none"; // Prevent scrolling/zooming
@@ -27,6 +29,12 @@ class TouchDPad {
     this.el.removeEventListener("pointerup", this._releaseBound);
     this.el.removeEventListener("pointercancel", this._releaseBound);
     this.el.removeEventListener("pointerleave", this._releaseBound);
+  }
+
+  _vibrate(ms) {
+    if (navigator.vibrate) {
+      try { navigator.vibrate(ms); } catch (e) { /* ignore */ }
+    }
   }
 
   _onPointer(e) {
@@ -56,6 +64,10 @@ class TouchDPad {
       if (this.activeKey) this.ctrl.keyup(this.activeKey);
       this.ctrl.keydown(newKey);
       this.activeKey = newKey;
+
+      // Haptic and sound feedback on direction change
+      this._vibrate(15);
+      if (this.sfx) this.sfx.playMove();
 
       // Visual feedback
       this._updateVisual(newKey);
