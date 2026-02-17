@@ -69,16 +69,33 @@ graph TB
 | Component | Role | Connections |
 |-----------|------|-------------|
 | **nginx** | TLS termination, rate limiting (10 req/s API, 3 req/min join), connection limiting (30/IP), static asset caching, WebSocket upgrade, admin IP restriction | All external traffic |
-| **REST API** | Queue join/leave, session lookup, health checks, admin operations | QueueManager, StateMachine, StatusHub |
+| **REST API** | Queue join/leave (supports active players via force_end_turn), session lookup, health checks, admin operations | QueueManager, StateMachine, StatusHub |
 | **ControlHandler** | Authenticated per-player WebSocket channel, command rate limiting (25 Hz), reconnection grace periods, duplicate tab handling | StateMachine, GPIOController |
 | **StatusHub** | Broadcast-only WebSocket hub for all viewers (up to 500), per-client send timeout (5s) | All connected browsers |
-| **StateMachine** | Turn state FSM (IDLE to READY to MOVING to DROPPING to POST_DROP to TURN_END), timer management, concurrent re-entry guards | QueueManager, GPIOController, StatusHub, ControlHandler |
+| **StateMachine** | Turn state FSM (IDLE→READY→MOVING→DROPPING→POST_DROP→TURN_END), SSOT deadline tracking (monotonic clock), timer management, DB deadline persistence, concurrent re-entry guards | QueueManager, GPIOController, StatusHub, ControlHandler |
 | **QueueManager** | SQLite CRUD for queue entries, token auth, position assignment, stale cleanup, aggregate stats | Database |
 | **GPIOController** | Async wrapper for gpiozero/lgpio, direction hold management, opposing direction conflict detection, pulse timing, emergency stop | Physical relay board |
 | **Camera** | OpenCV USB camera capture in background thread, MJPEG encoding, auto-device detection | USB camera hardware |
 | **MediaMTX** | Low-latency WebRTC streaming via WHEP protocol, supports Pi Camera Module and USB cameras via FFmpeg | Camera hardware |
 | **Watchdog** | Independent process, health checks every 2s, forces GPIO off after 3 consecutive failures using direct lgpio (no gpiozero conflict) | Health API, GPIO hardware |
 | **SQLite** | WAL mode for concurrent reads, busy timeout 5s, write lock serialization, periodic pruning | Persistent state |
+
+### Single Source of Truth (SSOT) Design
+
+ECLAW uses a layered SSOT approach to ensure consistency across all components:
+
+| Data | Source of Truth | Synced To |
+|------|----------------|-----------|
+| Queue order & player state (`waiting`/`ready`/`active`/`done`) | **SQLite database** | Frontend via WebSocket `queue_update` broadcasts |
+| Live game state (`TurnState`, active entry, current try) | **StateMachine in-memory** | All clients via WebSocket `state_update` broadcasts |
+| Timer deadlines (move timeout, turn timeout) | **StateMachine `_state_deadline` / `_turn_deadline`** (monotonic clock) | DB columns `try_move_end_at` / `turn_end_at` (ISO 8601 UTC), clients via `state_seconds_left` / `turn_seconds_left` in payloads |
+| Player authentication | **SQLite `token_hash`** | Browser `localStorage` holds raw token |
+| GPIO pin states | **GPIOController** | Physical relay board |
+
+**Key SSOT guarantees:**
+- All state payloads include `state_seconds_left` and `turn_seconds_left` computed from monotonic deadlines — clients always display accurate remaining time, even after WebSocket reconnection.
+- Queue broadcasts are sent on every state transition that changes queue visibility: join, leave, ready advancement, turn end, and ghost-player skip.
+- The `try_move_end_at` and `turn_end_at` DB columns are populated when entering MOVING state, providing a persistent recovery baseline if the server restarts.
 
 ---
 
@@ -87,7 +104,7 @@ graph TB
 ```mermaid
 stateDiagram-v2
     [*] --> waiting : POST /api/queue/join
-    waiting --> ready : StateMachine.advance_queue()<br/>peek next waiting
+    waiting --> ready : StateMachine.advance_queue()<br/>peek next waiting<br/>(broadcasts queue_update)
     waiting --> cancelled : DELETE /api/queue/leave
 
     ready --> active : Player sends ready_confirm<br/>via control WebSocket
@@ -98,6 +115,7 @@ stateDiagram-v2
     active --> done : Hard timeout (90s)<br/>result = expired
     active --> done : Disconnect grace expires (300s)<br/>result = expired
     active --> done : Admin skip<br/>result = admin_skipped
+    active --> done : DELETE /api/queue/leave<br/>result = cancelled<br/>(via force_end_turn)
 
     done --> [*]
     cancelled --> [*]
@@ -107,9 +125,9 @@ stateDiagram-v2
 
 | State | Meaning | Duration | Exit Conditions |
 |-------|---------|----------|-----------------|
-| `waiting` | Player is in queue, waiting for their turn | Until advanced or cancelled | advance_queue() -> ready, leave -> cancelled |
-| `ready` | Player is next; must confirm readiness | Up to 15s (configurable) | ready_confirm -> active, timeout -> done(skipped), leave -> cancelled |
-| `active` | Player is controlling the claw | Up to 90s hard limit | Turn ends with win/loss/expired/admin_skipped |
+| `waiting` | Player is in queue, waiting for their turn | Until advanced or cancelled | advance_queue() → ready, leave → cancelled |
+| `ready` | Player is next; must confirm readiness | Up to 15s (configurable) | ready_confirm → active, timeout → done(skipped), leave → cancelled |
+| `active` | Player is controlling the claw | Up to 90s hard limit | Turn ends with win/loss/expired/admin_skipped/cancelled |
 | `done` | Turn completed (terminal) | Retained for 48h then pruned | N/A |
 | `cancelled` | Player left voluntarily (terminal) | Retained for 48h then pruned | N/A |
 
@@ -133,9 +151,9 @@ stateDiagram-v2
 stateDiagram-v2
     direction TB
 
-    IDLE --> READY_PROMPT : advance_queue()<br/>next waiting player found
+    IDLE --> READY_PROMPT : advance_queue()<br/>next waiting player found<br/>(sets _state_deadline)
 
-    READY_PROMPT --> MOVING : Player sends ready_confirm<br/>(starts hard turn timer 90s)
+    READY_PROMPT --> MOVING : Player sends ready_confirm<br/>(starts hard turn timer 90s,<br/>sets _turn_deadline)
     READY_PROMPT --> IDLE : Timeout 15s or player leaves
 
     state "Try Loop (up to N tries)" as TryLoop {
@@ -150,7 +168,7 @@ stateDiagram-v2
     MOVING --> TURN_END : Hard turn timeout (90s)
     DROPPING --> TURN_END : Hard turn timeout (90s)
 
-    TURN_END --> IDLE : Cleanup complete<br/>advance_queue()
+    TURN_END --> IDLE : Cleanup complete<br/>advance_queue()<br/>(clears all deadlines)
 
     note right of IDLE
         Periodic safety net (10s)
@@ -160,25 +178,25 @@ stateDiagram-v2
 
 ### TurnState Descriptions
 
-| State | GPIO Activity | Timers Active | Player Can |
-|-------|--------------|---------------|------------|
-| `IDLE` | All OFF | None | Nothing (not their turn) |
-| `READY_PROMPT` | All OFF | Ready timeout (15s) | Confirm ready |
-| `MOVING` | Directions ON/OFF per input | Move timeout (30s), hard turn (90s) | Move claw (WASD/touch), press drop |
-| `DROPPING` | Drop relay ON, directions OFF | Drop hold (10s), hard turn (90s) | Nothing (automatic) |
-| `POST_DROP` | All OFF, win sensor active | Post-drop wait (8s), hard turn (90s) | Nothing (watching for win) |
-| `TURN_END` | Emergency stop (all OFF) | None | Nothing (cleanup in progress) |
+| State | GPIO Activity | Timers Active | Deadline Tracking | Player Can |
+|-------|--------------|---------------|-------------------|------------|
+| `IDLE` | All OFF | None | `_state_deadline = 0`, `_turn_deadline = 0` | Nothing (not their turn) |
+| `READY_PROMPT` | All OFF | Ready timeout (15s) | `_state_deadline` set | Confirm ready, leave queue |
+| `MOVING` | Directions ON/OFF per input | Move timeout (30s), hard turn (90s) | `_state_deadline` set, DB `try_move_end_at` + `turn_end_at` written | Move claw (WASD/touch), press drop, leave queue |
+| `DROPPING` | Drop relay ON, directions OFF | Drop hold (10s), hard turn (90s) | `_state_deadline` set | Nothing (automatic), leave queue |
+| `POST_DROP` | All OFF, win sensor active | Post-drop wait (8s), hard turn (90s) | `_state_deadline` set | Nothing (watching for win) |
+| `TURN_END` | Emergency stop (all OFF) | None | Cleared | Nothing (cleanup in progress) |
 
 ### Timer Summary
 
-| Timer | Duration | Starts When | Action on Expiry |
-|-------|----------|------------|-----------------|
-| Ready timeout | 15s | READY_PROMPT entered | Skip player, advance queue |
-| Move timeout | 30s | MOVING entered (per try) | Auto-drop |
-| Drop hold timeout | 10s | DROPPING entered | Release drop relay, enter POST_DROP |
-| Post-drop wait | 8s | POST_DROP entered | Check tries left: next try or loss |
-| Hard turn timeout | 90s | Player confirms ready | Force expire turn |
-| Grace period | 300s | Active player disconnects | Expire turn if not reconnected |
+| Timer | Duration | Starts When | Action on Expiry | SSOT |
+|-------|----------|------------|-----------------|------|
+| Ready timeout | 15s | READY_PROMPT entered | Skip player, advance queue | `_state_deadline` (monotonic) |
+| Move timeout | 30s | MOVING entered (per try) | Auto-drop | `_state_deadline` + DB `try_move_end_at` (UTC ISO 8601) |
+| Drop hold timeout | 10s | DROPPING entered | Release drop relay, enter POST_DROP | `_state_deadline` |
+| Post-drop wait | 8s | POST_DROP entered | Check tries left: next try or loss | `_state_deadline` |
+| Hard turn timeout | 90s | Player confirms ready | Force expire turn | `_turn_deadline` + DB `turn_end_at` (UTC ISO 8601) |
+| Grace period | 300s | Active player disconnects | Expire turn if not reconnected | ControlHandler in-memory |
 
 ---
 
@@ -199,9 +217,9 @@ sequenceDiagram
     B->>NG: POST /api/queue/join
     NG->>API: rate-limited proxy
     API->>DB: INSERT queue_entries (state=waiting)
-    API->>Hub: broadcast queue_update
+    API->>Hub: broadcast queue_update {entries[]}
     API-->>B: {token, position, estimated_wait}
-    B->>B: localStorage.setItem(token)
+    B->>B: localStorage.setItem(token + name)
     B->>B: switchToState("waiting")
 
     B->>NG: WebSocket upgrade /ws/control
@@ -212,22 +230,27 @@ sequenceDiagram
 
     Note over SM: advance_queue() picks next
     SM->>DB: SET state = ready
-    SM->>WS: ready_prompt {timeout: 15s}
-    SM->>Hub: broadcast state_update
+    SM->>Hub: broadcast queue_update {entries[]}<br/>(viewers see player as READY)
+    SM->>SM: Set _state_deadline (monotonic)
+    SM->>Hub: broadcast state_update {state_seconds_left}
+    SM->>WS: state_update + ready_prompt {timeout: 15s}
     WS-->>B: ready_prompt
-    B->>B: switchToState("ready")<br/>show countdown
+    B->>B: switchToState("ready")<br/>show countdown using state_seconds_left
 
     Note over SM: _ready_timeout starts (15s)
 
     B->>WS: ready_confirm
     WS->>SM: handle_ready_confirm()
     SM->>DB: SET state = active
+    SM->>SM: Set _turn_deadline (monotonic)
     SM->>HW: pulse coin relay (150ms)
     SM->>SM: Enter MOVING (try 1)
-    SM->>Hub: broadcast state_update
-    SM->>WS: state_update {state: moving}
+    SM->>SM: Set _state_deadline (monotonic)
+    SM->>DB: Write try_move_end_at + turn_end_at
+    SM->>Hub: broadcast state_update {state_seconds_left, turn_seconds_left}
+    SM->>WS: state_update {state: moving, state_seconds_left}
     WS-->>B: state_update
-    B->>B: switchToState("active")<br/>start timer
+    B->>B: switchToState("active")<br/>start timer from state_seconds_left
 
     loop Player controls claw (up to 30s)
         B->>WS: keydown {key: north}
@@ -259,11 +282,11 @@ sequenceDiagram
     end
 
     SM->>DB: SET state=done, result, tries_used
-    SM->>Hub: broadcast turn_end {entry_id, result}
+    SM->>Hub: broadcast turn_end + queue_update {entries[]}
     SM->>WS: turn_end {result, tries_used}
     WS-->>B: turn_end
     B->>B: switchToState("done")
-    SM->>SM: Reset to IDLE, advance_queue()
+    SM->>SM: Reset to IDLE (clear deadlines), advance_queue()
 ```
 
 ---
@@ -277,7 +300,7 @@ sequenceDiagram
     participant WS as Control WS
     participant SM as StateMachine
 
-    Note over B: Page loads, token in localStorage
+    Note over B: Page loads, token + name in localStorage
 
     B->>API: GET /api/session/me {Bearer token}
 
@@ -289,25 +312,39 @@ sequenceDiagram
         alt Reconnecting active player
             Note over WS: Cancel grace period timer
             WS-->>B: auth_ok {state: active}
-            WS-->>B: state_update {try, max_tries, move_seconds}
-            B->>B: Resume controls with correct timer
+            SM->>SM: _build_state_payload() computes<br/>state_seconds_left from _state_deadline
+            WS-->>B: state_update {try, max_tries,<br/>state_seconds_left, turn_seconds_left}
+            B->>B: Resume controls with ACCURATE remaining time<br/>(not full duration)
         else Reconnecting waiting player
             WS-->>B: auth_ok {state: waiting}
-            B->>B: Show waiting panel
+            B->>B: Show waiting panel<br/>(position updates from queue_update events)
         else Reconnecting ready player
             WS-->>B: auth_ok {state: ready}
-            B->>B: Show ready panel + countdown
+            WS-->>B: state_update {state_seconds_left}
+            B->>B: Show ready panel + countdown<br/>using state_seconds_left
         end
 
     else State = done / cancelled
         API-->>B: {state: done}
-        B->>B: Clear localStorage token
+        B->>B: Clear localStorage (token + name)
         B->>B: switchToState(null), show join screen
     else 401 / invalid token
         API-->>B: 401
-        B->>B: Clear localStorage token
+        B->>B: Clear localStorage
     end
 ```
+
+### SSOT Timer Sync on Reconnect
+
+When a player reconnects (page refresh or network recovery), the server sends a `state_update` containing:
+
+| Field | Source | Purpose |
+|-------|--------|---------|
+| `state_seconds_left` | `max(0, _state_deadline - time.monotonic())` | Remaining time for current state timer (ready/move/drop/post-drop) |
+| `turn_seconds_left` | `max(0, _turn_deadline - time.monotonic())` | Remaining time for hard turn timeout |
+| `try_move_seconds` | Settings value | Full duration (used only if `state_seconds_left` is 0) |
+
+The frontend prefers `state_seconds_left` over `try_move_seconds` when starting timers, ensuring the displayed countdown matches the server's actual deadline.
 
 ---
 
@@ -366,7 +403,7 @@ flowchart TB
 
     subgraph Crash["Timer Crash Recovery"]
         EX[Exception in any timer]
-        FR["_force_recover:<br/>1. cancel all timers<br/>2. emergency_stop GPIO<br/>3. complete entry as 'error'<br/>4. reset to IDLE<br/>5. advance_queue"]
+        FR["_force_recover:<br/>1. cancel all timers<br/>2. emergency_stop GPIO<br/>3. complete entry as 'error'<br/>4. reset to IDLE + clear deadlines<br/>5. advance_queue"]
     end
 
     subgraph Watchdog["Independent Watchdog Process"]
@@ -394,9 +431,13 @@ flowchart TB
 |-------|-------|---------------------|
 | Ghost player skip | advance_queue | Player navigated away > 30s ago with no WebSocket: skipped instantly |
 | State machine timers | Per-turn | Player idle, relay stuck on, turn running forever |
+| SSOT deadline tracking | Per-turn | Timer display drift on reconnect — clients receive `state_seconds_left` from monotonic clock |
+| DB deadline persistence | Per-turn | `try_move_end_at` and `turn_end_at` written to DB for crash recovery reference |
+| Queue broadcast on ready | advance_queue | Viewers see stale queue list — now broadcast `queue_update` when player advances to READY |
+| Active player leave | DELETE /queue/leave | Active players can now leave via `force_end_turn` instead of getting 404 |
 | Re-entry guard | _end_turn | Two timers firing simultaneously (e.g., hard timeout + post-drop) |
 | Periodic queue check | Global (10s) | SM stuck in IDLE with waiting players, stale active_entry_id, or active entry externally cancelled |
-| _force_recover | Timer crash | Unhandled exception in any timer coroutine |
+| _force_recover | Timer crash | Unhandled exception in any timer coroutine — clears deadlines and resets to IDLE |
 | Grace period | Disconnect | Active player loses network/closes tab |
 | Watchdog process | System-wide | Game server crash, hang, or OOM |
 | Startup cleanup | Server restart | Stale entries from previous session |
@@ -423,7 +464,7 @@ graph LR
         subgraph S2C["Server to Client"]
             B1["auth_ok {state, position}"]
             B2["ready_prompt {timeout_seconds}"]
-            B3["state_update {state, current_try,<br/>max_tries, try_move_seconds}"]
+            B3["state_update {state, current_try,<br/>max_tries, try_move_seconds,<br/>state_seconds_left, turn_seconds_left}"]
             B4["turn_end {result, tries_used}"]
             B5["control_ack {key, active}"]
             B6["latency_pong"]
@@ -435,7 +476,7 @@ graph LR
         direction TB
         subgraph Broadcast["Server to All Clients"]
             C1["queue_update {queue_length,<br/>current_player, current_player_state,<br/>viewer_count, entries[]}"]
-            C2["state_update {state, active_entry_id,<br/>current_try, max_tries,<br/>try_move_seconds}"]
+            C2["state_update {state, active_entry_id,<br/>current_try, max_tries,<br/>try_move_seconds,<br/>state_seconds_left, turn_seconds_left}"]
             C3["turn_end {entry_id, result}"]
             C4["ping (keepalive every 30s)"]
         end
@@ -458,10 +499,11 @@ graph LR
 - `latency_ping`: no rate limit (bypass)
 - Message size limit: 1024 bytes
 
-**Reconnection:**
+**Reconnection (SSOT timer sync):**
 - Client auto-reconnects with exponential backoff (1s to 10s max)
 - Server cancels grace period on successful re-auth
-- Server sends current state so client can resume mid-turn
+- Server sends `state_update` with `state_seconds_left` and `turn_seconds_left` computed from monotonic deadlines
+- Client starts timers from `state_seconds_left` (not from full duration), ensuring accurate countdown display after reconnect
 
 ### Status WebSocket Protocol
 
@@ -483,7 +525,7 @@ graph LR
 | Method | Path | Auth | Rate Limit | Request | Response |
 |--------|------|------|-----------|---------|----------|
 | POST | `/api/queue/join` | None | 3/min (nginx), 15/hr per email, 30/hr per IP | `{name, email}` | `{token, position, estimated_wait_seconds}` |
-| DELETE | `/api/queue/leave` | Bearer token | 10/s | Header: `Authorization: Bearer <token>` | `{ok: true}` |
+| DELETE | `/api/queue/leave` | Bearer token | 10/s | Header: `Authorization: Bearer <token>` | `{ok: true}` (works for waiting, ready, AND active players) |
 | GET | `/api/queue/status` | None | 10/s | -- | `{current_player, current_player_state, queue_length}` |
 | GET | `/api/queue` | None | 10/s | -- | `{entries[], total, current_player, game_state}` |
 | GET | `/api/session/me` | Bearer token | 10/s | Header: `Authorization: Bearer <token>` | `{state, position, tries_left, current_try}` |
@@ -527,8 +569,8 @@ erDiagram
         TEXT completed_at "When state became done or cancelled"
         TEXT result "win|loss|skipped|expired|etc"
         INTEGER tries_used "Drop attempts used"
-        TEXT try_move_end_at "Current try deadline"
-        TEXT turn_end_at "Hard turn deadline"
+        TEXT try_move_end_at "Current try deadline (UTC ISO 8601, written on MOVING entry)"
+        TEXT turn_end_at "Hard turn deadline (UTC ISO 8601, written on MOVING entry)"
     }
 
     game_events {
@@ -812,7 +854,7 @@ flowchart LR
     end
 
     subgraph JS["JavaScript (no build step)"]
-        APP["app.js<br/>State machine<br/>UI orchestration"]
+        APP["app.js<br/>State machine<br/>UI orchestration<br/>SSOT timer sync"]
         CTRL["controls.js<br/>ControlSocket class<br/>WebSocket lifecycle"]
         KB["keyboard.js<br/>WASD + arrows<br/>Space = drop"]
         TP["touch_dpad.js<br/>Mobile D-Pad<br/>Pointer events"]
@@ -836,13 +878,13 @@ null (join screen) --> waiting --> ready --> active --> done
       +------------------+------------- cleanup <-------+
 ```
 
-| UI State | Panel Shown | Inputs Active | WebSocket |
-|----------|------------|---------------|-----------|
-| `null` | Join form | Name + email | Status only |
-| `waiting` | Queue position + leave button | Leave button | Status + Control |
-| `ready` | Ready button + countdown | Ready button | Status + Control |
-| `active` | Video + D-pad/keyboard + timer | WASD/touch + drop | Status + Control |
-| `done` | Result + play-again button | Play again | Status only |
+| UI State | Panel Shown | Inputs Active | WebSocket | SSOT Sync |
+|----------|------------|---------------|-----------|-----------|
+| `null` | Join form | Name + email | Status only | -- |
+| `waiting` | Queue position + leave button | Leave button | Status + Control | Position updates from `queue_update` events |
+| `ready` | Ready button + countdown | Ready button | Status + Control | Timer from `state_seconds_left` (accurate on reconnect) |
+| `active` | Video + D-pad/keyboard + timer | WASD/touch + drop + leave | Status + Control | Move timer from `state_seconds_left` (accurate on reconnect) |
+| `done` | Result + play-again button | Play again | Status only | -- |
 
 ### Reconnection Behavior
 
