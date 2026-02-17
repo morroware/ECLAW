@@ -107,8 +107,17 @@ async def prune_old_entries(retention_hours: int = 48):
     _ensure_locks()
     async with _write_lock:
         cutoff = f"-{retention_hours} hours"
+        # Only delete events belonging to completed/cancelled entries older than
+        # the retention window.  Previous code deleted events by created_at alone,
+        # which could remove events for entries still in the queue (e.g. a player
+        # waiting longer than retention_hours at a multi-day event).
         result_events = await db.execute(
-            "DELETE FROM game_events WHERE created_at < datetime('now', ?)", (cutoff,)
+            "DELETE FROM game_events WHERE queue_entry_id IN ("
+            "  SELECT id FROM queue_entries"
+            "  WHERE state IN ('done', 'cancelled')"
+            "  AND completed_at < datetime('now', ?)"
+            ")",
+            (cutoff,),
         )
         result_entries = await db.execute(
             "DELETE FROM queue_entries WHERE state IN ('done', 'cancelled') "

@@ -96,7 +96,9 @@ async def lifespan(app: FastAPI):
 
     # Init managers
     qm = QueueManager()
-    await qm.cleanup_stale(settings.turn_time_seconds * 2)
+    # Use the grace period setting (not turn time) so players who disconnected
+    # within their reconnection window aren't unfairly expired on restart.
+    await qm.cleanup_stale(settings.queue_grace_period_seconds)
     app.state.queue_manager = qm
 
     ws_hub = StatusHub()

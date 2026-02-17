@@ -11,18 +11,32 @@ import app.database as _db_mod
 
 class QueueManager:
     async def join(self, name: str, email: str, ip: str) -> dict:
-        """Add a user to the queue. Returns {id, token, position}."""
+        """Add a user to the queue. Returns {id, token, position}.
+
+        Raises ValueError if the email already has an active queue entry.
+        """
         db = await get_db()
         entry_id = str(uuid.uuid4())
         raw_token = secrets.token_urlsafe(32)
         token_h = hash_token(raw_token)
 
         async with _db_mod._write_lock:
-            # Atomic position assignment: INSERT with subquery in a single statement
+            # Prevent the same player from joining while already in the queue
+            async with db.execute(
+                "SELECT id FROM queue_entries WHERE email = ? AND state IN ('waiting', 'ready', 'active')",
+                (email,),
+            ) as cur:
+                if await cur.fetchone():
+                    raise ValueError("You already have an active queue entry")
+
+            # Atomic position assignment: INSERT with subquery in a single statement.
+            # Use all non-terminal states for MAX(position) so positions never collide
+            # when the first waiting player advances to ready/active.
             await db.execute(
                 """INSERT INTO queue_entries (id, token_hash, name, email, ip_address, state, position)
                    VALUES (?, ?, ?, ?, ?, 'waiting',
-                           COALESCE((SELECT MAX(position) FROM queue_entries WHERE state = 'waiting'), 0) + 1)""",
+                           COALESCE((SELECT MAX(position) FROM queue_entries
+                                     WHERE state IN ('waiting', 'ready', 'active')), 0) + 1)""",
                 (entry_id, token_h, name, email, ip),
             )
             await db.commit()

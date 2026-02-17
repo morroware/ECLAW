@@ -71,6 +71,7 @@ class HistoryResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    game_state: str
     gpio_locked: bool
     camera_ok: bool
     queue_length: int
@@ -141,7 +142,10 @@ async def queue_join(body: JoinRequest, request: Request):
     check_rate_limit(f"email:{normalized_email}", 15)
 
     qm = request.app.state.queue_manager
-    result = await qm.join(normalized_name, normalized_email, ip)
+    try:
+        result = await qm.join(normalized_name, normalized_email, ip)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
     # Broadcast updated queue to all viewers
     status = await qm.get_queue_status()
@@ -291,6 +295,7 @@ async def health(request: Request):
 
     return HealthResponse(
         status="ok",
+        game_state=sm.state.value,
         gpio_locked=gpio.is_locked,
         camera_ok=camera_ok,
         queue_length=(await qm.get_queue_status())["queue_length"],
