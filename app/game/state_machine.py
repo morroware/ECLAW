@@ -34,6 +34,11 @@ class StateMachine:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._advance_lock = asyncio.Lock()
 
+        # Serialises all state-mutating operations.  The periodic checker,
+        # timer callbacks, and WebSocket handlers all go through this lock
+        # so that only one mutation runs at a time.
+        self._sm_lock = asyncio.Lock()
+
         # SSOT deadline tracking — monotonic timestamps for computing remaining time.
         # These are set when entering timed states and cleared on state exit.
         self._state_deadline: float = 0.0   # deadline for current state timer
@@ -42,6 +47,9 @@ class StateMachine:
         # Track when the last state transition happened so the periodic
         # checker can detect states that have been stuck for too long.
         self._last_state_change: float = time.monotonic()
+
+        # Prevents concurrent _force_recover calls from piling up.
+        self._recovering = False
 
     # -- Public Interface ----------------------------------------------------
 
@@ -135,27 +143,29 @@ class StateMachine:
 
     async def handle_ready_confirm(self, entry_id: str):
         """Called when the prompted player confirms they are ready."""
-        if self.state != TurnState.READY_PROMPT:
-            return
-        if entry_id != self.active_entry_id:
-            return
+        async with self._sm_lock:
+            if self.state != TurnState.READY_PROMPT:
+                return
+            if entry_id != self.active_entry_id:
+                return
 
-        await self.queue.set_state(entry_id, "active")
-        self.current_try = 0
+            await self.queue.set_state(entry_id, "active")
+            self.current_try = 0
 
-        # Start hard turn timer and record its deadline
-        self._turn_deadline = time.monotonic() + self.settings.turn_time_seconds
-        self._turn_timer = asyncio.create_task(
-            self._hard_turn_timeout(self.settings.turn_time_seconds)
-        )
-        await self._start_try()
+            # Start hard turn timer and record its deadline
+            self._turn_deadline = time.monotonic() + self.settings.turn_time_seconds
+            self._turn_timer = asyncio.create_task(
+                self._hard_turn_timeout(self.settings.turn_time_seconds)
+            )
+            await self._start_try()
 
     async def handle_drop_press(self, entry_id: str):
         """Called when active player clicks drop. Single-click: activates the
         relay, holds for drop_hold_max_ms, then auto-releases into POST_DROP."""
-        if self.state != TurnState.MOVING or entry_id != self.active_entry_id:
-            return
-        await self._enter_state(TurnState.DROPPING)
+        async with self._sm_lock:
+            if self.state != TurnState.MOVING or entry_id != self.active_entry_id:
+                return
+            await self._enter_state(TurnState.DROPPING)
 
     async def handle_win(self):
         """Called from win sensor callback (thread-safe bridged).
@@ -163,14 +173,15 @@ class StateMachine:
         Accepts wins during both DROPPING and POST_DROP.  Some claw machines
         trigger the win sensor while the claw is still retracting (DROPPING).
         """
-        if self.state == TurnState.DROPPING:
-            logger.info("WIN DETECTED during DROPPING — ending turn early")
-            await self._end_turn("win")
-        elif self.state == TurnState.POST_DROP:
-            logger.info("WIN DETECTED")
-            await self._end_turn("win")
-        else:
-            logger.warning(f"Win trigger ignored: state is {self.state}")
+        async with self._sm_lock:
+            if self.state == TurnState.DROPPING:
+                logger.info("WIN DETECTED during DROPPING — ending turn early")
+                await self._end_turn("win")
+            elif self.state == TurnState.POST_DROP:
+                logger.info("WIN DETECTED")
+                await self._end_turn("win")
+            else:
+                logger.warning(f"Win trigger ignored: state is {self.state}")
 
     async def handle_disconnect(self, entry_id: str):
         """Called when active player's WebSocket disconnects."""
@@ -183,14 +194,44 @@ class StateMachine:
 
     async def handle_disconnect_timeout(self, entry_id: str):
         """Called after grace period expires without reconnection."""
-        if entry_id != self.active_entry_id:
-            return
-        await self._end_turn("expired")
+        async with self._sm_lock:
+            if entry_id != self.active_entry_id:
+                return
+            await self._end_turn("expired")
 
     async def force_end_turn(self, result: str = "admin_skipped"):
-        """Admin: force end the current turn."""
-        if self.active_entry_id:
-            await self._end_turn(result)
+        """Force end the current turn (admin skip, player leave, etc.).
+
+        Handles the edge case where advance_queue() has set active_entry_id
+        but hasn't entered READY_PROMPT yet (state still IDLE).  In that
+        case _end_turn would bail, so we clean up the entry directly.
+        """
+        async with self._sm_lock:
+            if not self.active_entry_id:
+                return
+
+            if self.state in (TurnState.IDLE, TurnState.TURN_END):
+                # advance_queue set active_entry_id but the state hasn't
+                # transitioned yet (or turn is already ending).  Clean up
+                # the DB entry directly and reset.
+                entry_id = self.active_entry_id
+                logger.info(
+                    "force_end_turn: state is %s, cleaning up entry %s directly",
+                    self.state, entry_id,
+                )
+                try:
+                    await self.queue.complete_entry(entry_id, result, self.current_try)
+                except Exception:
+                    logger.exception("force_end_turn: failed to complete entry (non-fatal)")
+                self.active_entry_id = None
+                self.current_try = 0
+                self._state_deadline = 0.0
+                self._turn_deadline = 0.0
+                self.gpio._locked = False
+                # Let advance_queue pick up the next player
+                self._schedule_advance()
+            else:
+                await self._end_turn(result)
 
     def pause(self):
         self._paused = True
@@ -201,7 +242,11 @@ class StateMachine:
     # -- Internal State Transitions ------------------------------------------
 
     async def _enter_state(self, new_state: TurnState):
-        """Transition to a new state. Cancels any existing state timer."""
+        """Transition to a new state. Cancels any existing state timer.
+
+        MUST be called while holding _sm_lock (or from a timer callback
+        that has already checked its state guard).
+        """
         if self._state_timer and not self._state_timer.done():
             self._state_timer.cancel()
 
@@ -276,13 +321,22 @@ class StateMachine:
         await self._enter_state(TurnState.MOVING)
 
     async def _end_turn(self, result: str):
-        """Clean up and finalize the turn."""
+        """Clean up and finalize the turn.
+
+        IMPORTANT: This method MUST NOT call advance_queue() directly
+        because _end_turn is often invoked from timer callbacks that fire
+        while advance_queue() holds _advance_lock (e.g. ready timeout
+        during the advance_queue skipping loop).  Calling advance_queue()
+        inline would deadlock on _advance_lock.  Instead, we schedule it
+        as a fire-and-forget task.
+        """
         # Guard against re-entry from concurrent timer callbacks.
         # Two timers (e.g. _hard_turn_timeout and _post_drop_timeout) can
         # both wake and enter _end_turn before either cancels the other.
         # Setting TURN_END immediately blocks all timer state-checks.
         if self.state in (TurnState.IDLE, TurnState.TURN_END):
             return
+        prev_state = self.state
         self.state = TurnState.TURN_END
         self._last_state_change = time.monotonic()
 
@@ -296,6 +350,16 @@ class StateMachine:
             self._state_timer.cancel()
 
         self.gpio.unregister_win_callback()
+
+        # If we're in DROPPING state, explicitly release the drop relay
+        # BEFORE the emergency_stop so it gets turned off even if the
+        # executor is busy.
+        if prev_state == TurnState.DROPPING:
+            try:
+                await self.gpio.drop_off()
+            except Exception:
+                logger.exception("Failed to release drop relay before emergency_stop")
+
         # emergency_stop() handles its own timeouts internally via
         # _gpio_call() and auto-recovers the executor if lgpio blocks.
         # The outer wait_for is pure defense-in-depth (generous 10 s).
@@ -344,20 +408,41 @@ class StateMachine:
         self._state_deadline = 0.0
         self._turn_deadline = 0.0
 
-        # Immediately try to start the next player
-        try:
-            await self.advance_queue()
-        except Exception:
-            logger.exception("advance_queue failed after turn end (periodic check will retry)")
+        # Schedule advance_queue as a separate task to prevent deadlock.
+        # _end_turn is often called from timer callbacks that fire while
+        # advance_queue() holds _advance_lock.  A direct call here would
+        # deadlock.  The fire-and-forget task will acquire the lock fresh.
+        self._schedule_advance()
+
+    def _schedule_advance(self):
+        """Schedule advance_queue as a fire-and-forget task.
+
+        Safe to call from anywhere — avoids deadlocks on _advance_lock.
+        """
+        async def _safe_advance():
+            try:
+                await self.advance_queue()
+            except Exception:
+                logger.exception("Scheduled advance_queue failed (periodic check will retry)")
+
+        if self._loop and not self._loop.is_closed():
+            self._loop.create_task(_safe_advance())
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_safe_advance())
+            except RuntimeError:
+                logger.warning("No running event loop for scheduled advance_queue")
 
     # -- Timers --------------------------------------------------------------
 
     async def _ready_timeout(self, seconds: int):
         try:
             await asyncio.sleep(seconds)
-            if self.state == TurnState.READY_PROMPT:
-                logger.info("Ready prompt timed out, skipping player")
-                await self._end_turn("skipped")
+            async with self._sm_lock:
+                if self.state == TurnState.READY_PROMPT:
+                    logger.info("Ready prompt timed out, skipping player")
+                    await self._end_turn("skipped")
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -367,10 +452,11 @@ class StateMachine:
     async def _move_timeout(self, seconds: int):
         try:
             await asyncio.sleep(seconds)
-            if self.state == TurnState.MOVING:
-                logger.info("Move timer expired, auto-dropping")
-                self._state_timer = None  # Prevent self-cancellation
-                await self._enter_state(TurnState.DROPPING)
+            async with self._sm_lock:
+                if self.state == TurnState.MOVING:
+                    logger.info("Move timer expired, auto-dropping")
+                    self._state_timer = None  # Prevent self-cancellation
+                    await self._enter_state(TurnState.DROPPING)
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -381,11 +467,12 @@ class StateMachine:
         """Safety: auto-release drop after max hold time."""
         try:
             await asyncio.sleep(seconds)
-            if self.state == TurnState.DROPPING:
-                logger.info("Drop hold timeout, auto-releasing")
-                await self.gpio.drop_off()
-                self._state_timer = None  # Prevent self-cancellation
-                await self._enter_state(TurnState.POST_DROP)
+            async with self._sm_lock:
+                if self.state == TurnState.DROPPING:
+                    logger.info("Drop hold timeout, auto-releasing")
+                    await self.gpio.drop_off()
+                    self._state_timer = None  # Prevent self-cancellation
+                    await self._enter_state(TurnState.POST_DROP)
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -400,14 +487,15 @@ class StateMachine:
     async def _post_drop_timeout(self, seconds: int):
         try:
             await asyncio.sleep(seconds)
-            if self.state == TurnState.POST_DROP:
-                self.gpio.unregister_win_callback()
-                logger.info("Post-drop timeout, no win")
-                self._state_timer = None  # Prevent self-cancellation
-                if self.current_try < self.settings.tries_per_player:
-                    await self._start_try()
-                else:
-                    await self._end_turn("loss")
+            async with self._sm_lock:
+                if self.state == TurnState.POST_DROP:
+                    self.gpio.unregister_win_callback()
+                    logger.info("Post-drop timeout, no win")
+                    self._state_timer = None  # Prevent self-cancellation
+                    if self.current_try < self.settings.tries_per_player:
+                        await self._start_try()
+                    else:
+                        await self._end_turn("loss")
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -417,9 +505,10 @@ class StateMachine:
     async def _hard_turn_timeout(self, seconds: int):
         try:
             await asyncio.sleep(seconds)
-            if self.state not in (TurnState.IDLE, TurnState.TURN_END):
-                logger.warning("Hard turn timeout reached")
-                await self._end_turn("expired")
+            async with self._sm_lock:
+                if self.state not in (TurnState.IDLE, TurnState.TURN_END):
+                    logger.warning("Hard turn timeout reached")
+                    await self._end_turn("expired")
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -427,30 +516,48 @@ class StateMachine:
             await self._force_recover()
 
     async def _force_recover(self):
-        """Emergency recovery: force the state machine back to IDLE."""
+        """Emergency recovery: force the state machine back to IDLE.
+
+        Guarded against concurrent calls — only one recovery can run at
+        a time.  Uses _sm_lock to prevent races with normal state machine
+        operations.
+        """
+        if self._recovering:
+            logger.warning("Force recovery already in progress, skipping")
+            return
+        self._recovering = True
         try:
-            logger.warning("Force recovering state machine to IDLE")
-            if self._state_timer and not self._state_timer.done():
-                self._state_timer.cancel()
-            if self._turn_timer and not self._turn_timer.done():
-                self._turn_timer.cancel()
-            self.gpio.unregister_win_callback()
-            try:
-                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
-            except (asyncio.TimeoutError, Exception):
-                logger.exception("GPIO emergency_stop failed during force recovery")
-            self.gpio._locked = False
-            if self.active_entry_id:
-                await self.queue.complete_entry(
-                    self.active_entry_id, "error", self.current_try
-                )
-            self.state = TurnState.IDLE
-            self._last_state_change = time.monotonic()
-            self.active_entry_id = None
-            self.current_try = 0
-            self._state_deadline = 0.0
-            self._turn_deadline = 0.0
-            await self.advance_queue()
+            async with self._sm_lock:
+                # Re-check: another path may have already recovered us.
+                if self.state == TurnState.IDLE and self.active_entry_id is None:
+                    logger.info("Force recovery: already IDLE, nothing to do")
+                    return
+
+                logger.warning("Force recovering state machine to IDLE")
+                if self._state_timer and not self._state_timer.done():
+                    self._state_timer.cancel()
+                if self._turn_timer and not self._turn_timer.done():
+                    self._turn_timer.cancel()
+                self.gpio.unregister_win_callback()
+                try:
+                    await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
+                except (asyncio.TimeoutError, Exception):
+                    logger.exception("GPIO emergency_stop failed during force recovery")
+                # ALWAYS unlock GPIO regardless of what happened above
+                self.gpio._locked = False
+                if self.active_entry_id:
+                    try:
+                        await self.queue.complete_entry(
+                            self.active_entry_id, "error", self.current_try
+                        )
+                    except Exception:
+                        logger.exception("Failed to complete entry during force recovery (non-fatal)")
+                self.state = TurnState.IDLE
+                self._last_state_change = time.monotonic()
+                self.active_entry_id = None
+                self.current_try = 0
+                self._state_deadline = 0.0
+                self._turn_deadline = 0.0
         except Exception:
             logger.exception("Force recovery also failed!")
             # Last resort: just reset state so periodic check can pick it up
@@ -461,6 +568,11 @@ class StateMachine:
             self._state_deadline = 0.0
             self._turn_deadline = 0.0
             self.gpio._locked = False
+        finally:
+            self._recovering = False
+
+        # Schedule advance outside the lock to avoid deadlock
+        self._schedule_advance()
 
     # -- Helpers -------------------------------------------------------------
 

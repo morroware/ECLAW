@@ -108,11 +108,18 @@ class ControlHandler:
                     self._last_command_time.pop(entry_id, None)
                     if entry_id == self.sm.active_entry_id:
                         await self.sm.handle_disconnect(entry_id)
-                        # Start grace period for active player
-                        task = asyncio.create_task(
-                            self._disconnect_grace(entry_id, self.settings.queue_grace_period_seconds)
-                        )
-                        self._grace_tasks[entry_id] = task
+                        # Only start the long grace period for truly active
+                        # players (MOVING, DROPPING, POST_DROP).  Players in
+                        # READY_PROMPT will be handled by the ready timeout
+                        # (15s) — giving them a 300s grace period would stall
+                        # the queue for 5 minutes when someone navigates away
+                        # before confirming ready.
+                        from app.game.state_machine import TurnState
+                        if self.sm.state in (TurnState.MOVING, TurnState.DROPPING, TurnState.POST_DROP):
+                            task = asyncio.create_task(
+                                self._disconnect_grace(entry_id, self.settings.queue_grace_period_seconds)
+                            )
+                            self._grace_tasks[entry_id] = task
 
     async def _handle_message(self, entry_id: str, raw: str, ws: WebSocket):
         if len(raw) > 1024:
