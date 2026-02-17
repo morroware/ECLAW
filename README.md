@@ -11,7 +11,7 @@ Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock
 ### Try it locally (any machine)
 
 ```bash
-git clone <repo-url> ECLAW && cd ECLAW
+git clone https://github.com/morroware/ECLAW.git ECLAW && cd ECLAW
 ./install.sh dev
 make run
 # Open http://localhost:8000
@@ -20,7 +20,7 @@ make run
 ### Deploy on Pi 5 for a PoC demo
 
 ```bash
-git clone <repo-url> ECLAW && cd ECLAW
+git clone https://github.com/morroware/ECLAW.git ECLAW && cd ECLAW
 ./install.sh demo
 # Open http://<pi-ip> from any device on the network
 ```

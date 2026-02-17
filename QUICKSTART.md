@@ -28,7 +28,7 @@ This guide gets ECLAW running on a Raspberry Pi 5 for a PoC demo. If you just wa
 ### Step 1: Clone and install
 
 ```bash
-git clone <your-repo-url> ECLAW
+git clone https://github.com/morroware/ECLAW.git ECLAW
 cd ECLAW
 ./install.sh dev
 ```
@@ -95,7 +95,7 @@ Or open http://localhost:8000/api/docs for the interactive Swagger UI.
 ### Step 2: Clone the repository
 
 ```bash
-git clone <your-repo-url> ECLAW
+git clone https://github.com/morroware/ECLAW.git ECLAW
 cd ECLAW
 ```
 
@@ -320,11 +320,6 @@ curl http://localhost:8889/v3/paths/list
 The stream is available at:
 - WebRTC: http://\<pi-ip\>:8889/cam (direct MediaMTX)
 - Via nginx: http://\<pi-ip\>/stream/cam/whep (proxied, used by the UI)
-
-Then: `sudo systemctl restart mediamtx`
-
----
-
 
 ---
 
