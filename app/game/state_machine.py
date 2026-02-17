@@ -39,6 +39,10 @@ class StateMachine:
         self._state_deadline: float = 0.0   # deadline for current state timer
         self._turn_deadline: float = 0.0    # deadline for hard turn timeout
 
+        # Track when the last state transition happened so the periodic
+        # checker can detect states that have been stuck for too long.
+        self._last_state_change: float = time.monotonic()
+
     # -- Public Interface ----------------------------------------------------
 
     async def advance_queue(self):
@@ -204,6 +208,7 @@ class StateMachine:
         old_state = self.state
         self.state = new_state
         self._state_deadline = 0.0  # Reset; set below for timed states
+        self._last_state_change = time.monotonic()
         logger.info(f"State: {old_state} -> {new_state}")
 
         if new_state == TurnState.READY_PROMPT:
@@ -279,6 +284,7 @@ class StateMachine:
         if self.state in (TurnState.IDLE, TurnState.TURN_END):
             return
         self.state = TurnState.TURN_END
+        self._last_state_change = time.monotonic()
 
         logger.info(f"Turn ending: result={result}, tries={self.current_try}")
 
@@ -290,8 +296,21 @@ class StateMachine:
             self._state_timer.cancel()
 
         self.gpio.unregister_win_callback()
-        await self.gpio.emergency_stop()
-        await self.gpio.unlock()
+        # Timeout GPIO operations so a hanging hardware call (e.g. lgpio
+        # bus lock on Pi 4) cannot block the turn-end flow forever.
+        try:
+            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.error("GPIO emergency_stop timed out after 5s — continuing cleanup")
+        except Exception:
+            logger.exception("GPIO emergency_stop failed — continuing cleanup")
+        try:
+            await asyncio.wait_for(self.gpio.unlock(), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.error("GPIO unlock timed out after 2s — forcing unlock flag")
+            self.gpio._locked = False
+        except Exception:
+            logger.exception("GPIO unlock failed — continuing cleanup")
 
         try:
             if self.active_entry_id:
@@ -321,6 +340,7 @@ class StateMachine:
 
         # Always reset to IDLE regardless of cleanup errors above
         self.state = TurnState.IDLE
+        self._last_state_change = time.monotonic()
         self.active_entry_id = None
         self.current_try = 0
         self._state_deadline = 0.0
@@ -417,13 +437,20 @@ class StateMachine:
             if self._turn_timer and not self._turn_timer.done():
                 self._turn_timer.cancel()
             self.gpio.unregister_win_callback()
-            await self.gpio.emergency_stop()
-            await self.gpio.unlock()
+            try:
+                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
+            except (asyncio.TimeoutError, Exception):
+                logger.exception("GPIO emergency_stop failed during force recovery")
+            try:
+                await asyncio.wait_for(self.gpio.unlock(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                self.gpio._locked = False
             if self.active_entry_id:
                 await self.queue.complete_entry(
                     self.active_entry_id, "error", self.current_try
                 )
             self.state = TurnState.IDLE
+            self._last_state_change = time.monotonic()
             self.active_entry_id = None
             self.current_try = 0
             self._state_deadline = 0.0
@@ -433,6 +460,7 @@ class StateMachine:
             logger.exception("Force recovery also failed!")
             # Last resort: just reset state so periodic check can pick it up
             self.state = TurnState.IDLE
+            self._last_state_change = time.monotonic()
             self.active_entry_id = None
             self.current_try = 0
             self._state_deadline = 0.0
