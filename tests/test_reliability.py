@@ -15,6 +15,7 @@ import os
 import time
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 import app.database as db_module
@@ -522,13 +523,13 @@ async def test_concurrent_db_writes(fresh_db):
 # ===========================================================================
 
 @pytest.mark.anyio
-async def test_migration_002_applied(fresh_db):
-    """The migration system should have applied migration 002, bringing
-    the schema version to 2."""
+async def test_migrations_applied(fresh_db):
+    """The migration system should have applied all migrations (002 for
+    DB constraints, 003 for rate limiter table)."""
     db = fresh_db
     async with db.execute("SELECT MAX(version) FROM schema_version") as cur:
         row = await cur.fetchone()
-        assert row[0] == 2
+        assert row[0] == 3
 
 
 # ===========================================================================
@@ -560,3 +561,189 @@ async def test_periodic_check_detects_stuck_moving(api_client):
     # SM should have recovered to IDLE
     assert sm.state == TurnState.IDLE
     assert sm.active_entry_id is None
+
+
+# ===========================================================================
+# Test 12: _enter_state completes when control send blocks
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_enter_state_bounded_with_real_ctrl():
+    """End-to-end: _enter_state calls real ControlHandler.send_to_player
+    which has a 2s timeout.  Verify the full transition completes within
+    a bounded window even when the player's socket is stalled."""
+    real_ctrl = ControlHandler(None, _MockQueue(), _MockGPIO(), settings)
+
+    class _StallSocket:
+        async def send_text(self, data):
+            await asyncio.sleep(999)
+        async def close(self, code=1000, reason=""):
+            pass
+
+    # Register a stalled socket for the player
+    real_ctrl._player_ws["player1"] = _StallSocket()
+
+    queue = _MockQueue()
+    queue._entries = [
+        {"id": "player1", "state": "waiting", "name": "Test", "position": 1,
+         "created_at": "2025-01-01T00:00:00"}
+    ]
+    sm = _make_sm(ctrl=real_ctrl, queue=queue)
+    real_ctrl.sm = sm
+
+    # advance_queue → _enter_state(READY_PROMPT) → send_to_player (blocked)
+    # The 2s send timeout should let the transition complete.
+    await asyncio.wait_for(sm.advance_queue(), timeout=10.0)
+
+    assert sm.state == TurnState.READY_PROMPT
+    assert sm.active_entry_id == "player1"
+    # Stalled socket should have been evicted
+    assert "player1" not in real_ctrl._player_ws
+
+
+@pytest.mark.anyio
+async def test_end_turn_bounded_with_stalled_socket():
+    """_end_turn calls send_to_player to notify the player of turn result.
+    With a stalled socket, verify the turn ends within bounded time."""
+    real_ctrl = ControlHandler(None, _MockQueue(), _MockGPIO(), settings)
+
+    class _StallSocket:
+        async def send_text(self, data):
+            await asyncio.sleep(999)
+        async def close(self, code=1000, reason=""):
+            pass
+
+    real_ctrl._player_ws["player1"] = _StallSocket()
+
+    queue = _MockQueue()
+    queue._entries = [
+        {"id": "player1", "state": "active", "name": "Test", "position": 1,
+         "created_at": "2025-01-01T00:00:00"}
+    ]
+    sm = _make_sm(ctrl=real_ctrl, queue=queue)
+    real_ctrl.sm = sm
+    await sm.advance_queue()  # prime loop ref
+
+    # Set up state as if player is in MOVING
+    sm.state = TurnState.MOVING
+    sm.active_entry_id = "player1"
+    sm.current_try = 1
+
+    # _end_turn should complete within bounded time despite stalled socket
+    async with sm._sm_lock:
+        await asyncio.wait_for(sm._end_turn("loss"), timeout=10.0)
+
+    assert sm.state == TurnState.IDLE
+    assert sm.active_entry_id is None
+    assert len(queue._completed) == 1
+
+
+# ===========================================================================
+# Test 13: advance_queue lock hold time is reduced
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_advance_queue_lock_not_held_during_ws_wait():
+    """The _advance_lock should not be held during the ~2s WebSocket
+    connection wait, so concurrent callers aren't blocked."""
+    ctrl = _MockCtrl()
+    # Player is NOT connected — triggers the wait path
+    queue = _MockQueue()
+    queue._entries = [
+        {"id": "slow-player", "state": "waiting", "name": "Slow", "position": 1,
+         "created_at": "2025-01-01T00:00:00"}
+    ]
+    sm = _make_sm(ctrl=ctrl, queue=queue)
+
+    lock_acquired = asyncio.Event()
+    lock_released = asyncio.Event()
+
+    async def _try_lock():
+        """Try to acquire the lock while advance_queue is running."""
+        async with sm._advance_lock:
+            lock_acquired.set()
+        lock_released.set()
+
+    # Start advance_queue (will do pre-flight wait ~2s outside lock)
+    advance_task = asyncio.create_task(sm.advance_queue())
+
+    # Small delay to let the pre-flight wait start
+    await asyncio.sleep(0.2)
+
+    # Try to acquire the lock — should succeed quickly if wait is outside lock
+    lock_task = asyncio.create_task(_try_lock())
+    try:
+        await asyncio.wait_for(lock_acquired.wait(), timeout=1.0)
+        acquired_during_wait = True
+    except asyncio.TimeoutError:
+        acquired_during_wait = False
+
+    # Clean up
+    advance_task.cancel()
+    lock_task.cancel()
+    try:
+        await advance_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await lock_task
+    except asyncio.CancelledError:
+        pass
+
+    # The lock should have been acquirable during the pre-flight wait
+    assert acquired_during_wait, \
+        "_advance_lock was held during WS connection wait (should be outside lock)"
+
+
+# ===========================================================================
+# Test 14: SQLite-backed rate limiter survives restart
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_rate_limiter_persistence(fresh_db):
+    """Rate limit records stored in SQLite should survive across
+    check_rate_limit calls (simulating persistence across restarts)."""
+    from app.api.routes import check_rate_limit_db
+
+    # Record 5 joins for this IP
+    for _ in range(5):
+        await check_rate_limit_db("ip:10.0.0.1", 10)
+
+    # Should still allow more (5 < 10)
+    await check_rate_limit_db("ip:10.0.0.1", 10)  # 6th, still OK
+
+    # Record enough to hit the limit
+    for _ in range(4):
+        await check_rate_limit_db("ip:10.0.0.1", 10)  # 7,8,9,10
+
+    # 11th should be rejected
+    with pytest.raises(HTTPException) as exc_info:
+        await check_rate_limit_db("ip:10.0.0.1", 10)
+    assert exc_info.value.status_code == 429
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_cleanup(fresh_db):
+    """Old rate limit records should be cleaned up."""
+    from app.api.routes import prune_rate_limits
+    from app.database import get_db
+
+    db = await get_db()
+    # Insert an old record (2 hours ago)
+    db_module._ensure_locks()
+    async with db_module._write_lock:
+        await db.execute(
+            "INSERT INTO rate_limits (key, ts) VALUES (?, datetime('now', '-2 hours'))",
+            ("ip:old",),
+        )
+        await db.commit()
+
+    # Prune with 1-hour window
+    await prune_rate_limits(3600)
+
+    # Old record should be gone
+    async with db.execute(
+        "SELECT COUNT(*) FROM rate_limits WHERE key = 'ip:old'"
+    ) as cur:
+        row = await cur.fetchone()
+        assert row[0] == 0

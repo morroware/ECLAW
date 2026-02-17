@@ -31,13 +31,18 @@ logger = logging.getLogger("main")
 
 
 async def _periodic_db_prune(interval_seconds: int = 3600):
-    """Background task that prunes old DB entries periodically."""
+    """Background task that prunes old DB entries and rate limit records."""
     while True:
         await asyncio.sleep(interval_seconds)
         try:
             await prune_old_entries(settings.db_retention_hours)
         except Exception:
             logger.exception("Periodic DB prune failed")
+        try:
+            from app.api.routes import prune_rate_limits
+            await prune_rate_limits(3600)
+        except Exception:
+            logger.exception("Periodic rate limit prune failed")
 
 
 async def _periodic_queue_check(sm, interval_seconds: int = 10):
