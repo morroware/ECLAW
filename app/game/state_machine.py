@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from enum import Enum
 
 logger = logging.getLogger("state_machine")
@@ -32,6 +33,11 @@ class StateMachine:
         self._paused = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._advance_lock = asyncio.Lock()
+
+        # SSOT deadline tracking — monotonic timestamps for computing remaining time.
+        # These are set when entering timed states and cleared on state exit.
+        self._state_deadline: float = 0.0   # deadline for current state timer
+        self._turn_deadline: float = 0.0    # deadline for hard turn timeout
 
     # -- Public Interface ----------------------------------------------------
 
@@ -108,6 +114,18 @@ class StateMachine:
                 self.active_entry_id = next_entry["id"]
                 await self.queue.set_state(next_entry["id"], "ready")
 
+                # Broadcast updated queue so viewers see the player as READY
+                try:
+                    status = await self.queue.get_queue_status()
+                    entries = await self.queue.list_queue()
+                    queue_entries = [
+                        {"name": e["name"], "state": e["state"], "position": e["position"]}
+                        for e in entries
+                    ]
+                    await self.ws.broadcast_queue_update(status, queue_entries)
+                except Exception:
+                    logger.exception("Broadcast failed during ready advancement (non-fatal)")
+
                 await self._enter_state(TurnState.READY_PROMPT)
                 return
 
@@ -121,7 +139,8 @@ class StateMachine:
         await self.queue.set_state(entry_id, "active")
         self.current_try = 0
 
-        # Start hard turn timer
+        # Start hard turn timer and record its deadline
+        self._turn_deadline = time.monotonic() + self.settings.turn_time_seconds
         self._turn_timer = asyncio.create_task(
             self._hard_turn_timeout(self.settings.turn_time_seconds)
         )
@@ -184,9 +203,45 @@ class StateMachine:
 
         old_state = self.state
         self.state = new_state
+        self._state_deadline = 0.0  # Reset; set below for timed states
         logger.info(f"State: {old_state} -> {new_state}")
 
-        # Broadcast state to all viewers
+        if new_state == TurnState.READY_PROMPT:
+            self._state_deadline = time.monotonic() + self.settings.ready_prompt_seconds
+            self._state_timer = asyncio.create_task(
+                self._ready_timeout(self.settings.ready_prompt_seconds)
+            )
+
+        elif new_state == TurnState.MOVING:
+            self._state_deadline = time.monotonic() + self.settings.try_move_seconds
+            self._state_timer = asyncio.create_task(
+                self._move_timeout(self.settings.try_move_seconds)
+            )
+            # Persist deadline to DB for SSOT recovery
+            await self._write_deadlines()
+
+        elif new_state == TurnState.DROPPING:
+            drop_secs = self.settings.drop_hold_max_ms / 1000.0
+            self._state_deadline = time.monotonic() + drop_secs
+            await self.gpio.all_directions_off()
+            self.gpio.register_win_callback(self._win_bridge)
+            await self.gpio.drop_on()
+            self._state_timer = asyncio.create_task(
+                self._drop_hold_timeout(drop_secs)
+            )
+
+        elif new_state == TurnState.POST_DROP:
+            self._state_deadline = time.monotonic() + self.settings.post_drop_wait_seconds
+            self.gpio.register_win_callback(self._win_bridge)
+            self._state_timer = asyncio.create_task(
+                self._post_drop_timeout(self.settings.post_drop_wait_seconds)
+            )
+
+        elif new_state == TurnState.TURN_END:
+            pass  # Handled by _end_turn
+
+        # Broadcast state to all viewers (after deadlines are set so payload
+        # includes accurate remaining-time values)
         payload = self._build_state_payload()
         await self.ws.broadcast_state(new_state, payload)
 
@@ -196,38 +251,13 @@ class StateMachine:
                 "type": "state_update", **payload
             })
 
-        if new_state == TurnState.READY_PROMPT:
-            self._state_timer = asyncio.create_task(
-                self._ready_timeout(self.settings.ready_prompt_seconds)
-            )
-            # Notify the specific player they need to confirm
-            if self.ctrl:
-                await self.ctrl.send_to_player(self.active_entry_id, {
-                    "type": "ready_prompt",
-                    "timeout_seconds": self.settings.ready_prompt_seconds,
-                })
-
-        elif new_state == TurnState.MOVING:
-            self._state_timer = asyncio.create_task(
-                self._move_timeout(self.settings.try_move_seconds)
-            )
-
-        elif new_state == TurnState.DROPPING:
-            await self.gpio.all_directions_off()
-            self.gpio.register_win_callback(self._win_bridge)
-            await self.gpio.drop_on()
-            self._state_timer = asyncio.create_task(
-                self._drop_hold_timeout(self.settings.drop_hold_max_ms / 1000.0)
-            )
-
-        elif new_state == TurnState.POST_DROP:
-            self.gpio.register_win_callback(self._win_bridge)
-            self._state_timer = asyncio.create_task(
-                self._post_drop_timeout(self.settings.post_drop_wait_seconds)
-            )
-
-        elif new_state == TurnState.TURN_END:
-            pass  # Handled by _end_turn
+        # Send explicit ready_prompt after the state_update so the client
+        # has full context (timeout_seconds is included in the payload now)
+        if new_state == TurnState.READY_PROMPT and self.ctrl:
+            await self.ctrl.send_to_player(self.active_entry_id, {
+                "type": "ready_prompt",
+                "timeout_seconds": self.settings.ready_prompt_seconds,
+            })
 
     async def _start_try(self):
         """Begin a new try. Optionally pulse coin, then enter MOVING."""
@@ -293,6 +323,8 @@ class StateMachine:
         self.state = TurnState.IDLE
         self.active_entry_id = None
         self.current_try = 0
+        self._state_deadline = 0.0
+        self._turn_deadline = 0.0
 
         # Immediately try to start the next player
         try:
@@ -394,6 +426,8 @@ class StateMachine:
             self.state = TurnState.IDLE
             self.active_entry_id = None
             self.current_try = 0
+            self._state_deadline = 0.0
+            self._turn_deadline = 0.0
             await self.advance_queue()
         except Exception:
             logger.exception("Force recovery also failed!")
@@ -401,6 +435,8 @@ class StateMachine:
             self.state = TurnState.IDLE
             self.active_entry_id = None
             self.current_try = 0
+            self._state_deadline = 0.0
+            self._turn_deadline = 0.0
 
     # -- Helpers -------------------------------------------------------------
 
@@ -413,10 +449,49 @@ class StateMachine:
         asyncio.run_coroutine_threadsafe(self.handle_win(), self._loop)
 
     def _build_state_payload(self) -> dict:
+        # Compute seconds remaining for the current state timer.
+        # Uses monotonic clock so it's immune to wall-clock adjustments.
+        remaining = 0.0
+        if self._state_deadline > 0:
+            remaining = max(0.0, self._state_deadline - time.monotonic())
+
+        turn_remaining = 0.0
+        if self._turn_deadline > 0:
+            turn_remaining = max(0.0, self._turn_deadline - time.monotonic())
+
         return {
             "state": self.state.value,
             "active_entry_id": self.active_entry_id,
             "current_try": self.current_try,
             "max_tries": self.settings.tries_per_player,
             "try_move_seconds": self.settings.try_move_seconds,
+            "state_seconds_left": round(remaining, 1),
+            "turn_seconds_left": round(turn_remaining, 1),
         }
+
+    async def _write_deadlines(self):
+        """Persist deadline timestamps to DB for SSOT recovery."""
+        if not self.active_entry_id:
+            return
+        try:
+            from datetime import datetime, timezone, timedelta
+            from app.database import get_db
+            import app.database as _db_mod
+            now = datetime.now(timezone.utc)
+            move_end = None
+            turn_end = None
+            if self._state_deadline > 0:
+                secs_left = max(0, self._state_deadline - time.monotonic())
+                move_end = (now + timedelta(seconds=secs_left)).isoformat()
+            if self._turn_deadline > 0:
+                secs_left = max(0, self._turn_deadline - time.monotonic())
+                turn_end = (now + timedelta(seconds=secs_left)).isoformat()
+            db = await get_db()
+            async with _db_mod._write_lock:
+                await db.execute(
+                    "UPDATE queue_entries SET try_move_end_at = ?, turn_end_at = ? WHERE id = ?",
+                    (move_end, turn_end, self.active_entry_id),
+                )
+                await db.commit()
+        except Exception:
+            logger.exception("Failed to write deadlines to DB (non-fatal)")
