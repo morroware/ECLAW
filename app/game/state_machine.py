@@ -36,7 +36,13 @@ class StateMachine:
     # -- Public Interface ----------------------------------------------------
 
     async def advance_queue(self):
-        """Called when queue changes or a turn ends. Starts next player if any."""
+        """Called when queue changes or a turn ends. Starts next player if any.
+
+        If the next player has no WebSocket connection (they navigated away),
+        they are skipped immediately instead of waiting for the full ready
+        timeout.  Players who joined very recently (< 30 s) get the normal
+        ready-prompt flow because their WebSocket may still be connecting.
+        """
         if self._loop is None:
             self._loop = asyncio.get_running_loop()
 
@@ -46,24 +52,64 @@ class StateMachine:
             if self._paused:
                 return
 
-            next_entry = await self.queue.peek_next_waiting()
-            if next_entry is None:
+            while True:
+                next_entry = await self.queue.peek_next_waiting()
+                if next_entry is None:
+                    return
+
+                # Give the player a moment to establish their control WebSocket
+                # before deciding whether to skip or prompt.
+                if self.ctrl and not self.ctrl.is_player_connected(next_entry["id"]):
+                    for _ in range(20):  # wait up to ~2 s
+                        await asyncio.sleep(0.1)
+                        if self.ctrl.is_player_connected(next_entry["id"]):
+                            break
+
+                # If still not connected, check how long they've been in the
+                # queue.  Players who joined > 30 s ago and have no WebSocket
+                # have almost certainly navigated away — skip them immediately
+                # so the queue drains in seconds, not minutes.
+                if self.ctrl and not self.ctrl.is_player_connected(next_entry["id"]):
+                    from datetime import datetime, timezone
+                    created = next_entry.get("created_at", "")
+                    age_seconds = 999
+                    try:
+                        # SQLite stores as ISO without tz — assume UTC
+                        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        age_seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+                    except Exception:
+                        pass
+
+                    if age_seconds > 30:
+                        logger.info(
+                            "Skipping disconnected player %s (%s, queued %.0fs ago)",
+                            next_entry["id"], next_entry["name"], age_seconds,
+                        )
+                        await self.queue.complete_entry(next_entry["id"], "skipped", 0)
+
+                        # Broadcast the skip to viewers
+                        try:
+                            await self.ws.broadcast_turn_end(next_entry["id"], "skipped")
+                            status = await self.queue.get_queue_status()
+                            entries = await self.queue.list_queue()
+                            queue_entries = [
+                                {"name": e["name"], "state": e["state"], "position": e["position"]}
+                                for e in entries
+                            ]
+                            await self.ws.broadcast_queue_update(status, queue_entries)
+                        except Exception:
+                            logger.exception("Broadcast failed during ghost-player skip (non-fatal)")
+
+                        continue  # Try the next waiting player
+
+                # Player is connected (or just joined) — normal ready prompt
+                self.active_entry_id = next_entry["id"]
+                await self.queue.set_state(next_entry["id"], "ready")
+
+                await self._enter_state(TurnState.READY_PROMPT)
                 return
-
-            self.active_entry_id = next_entry["id"]
-            await self.queue.set_state(next_entry["id"], "ready")
-
-            # Give the player a moment to establish their control WebSocket
-            # before entering READY_PROMPT (which starts the ready timeout).
-            # Without this delay the ready_prompt message is sent before the
-            # WS exists and gets silently dropped.
-            if self.ctrl and not self.ctrl.is_player_connected(next_entry["id"]):
-                for _ in range(20):  # wait up to ~2 s
-                    await asyncio.sleep(0.1)
-                    if self.ctrl.is_player_connected(next_entry["id"]):
-                        break
-
-            await self._enter_state(TurnState.READY_PROMPT)
 
     async def handle_ready_confirm(self, entry_id: str):
         """Called when the prompted player confirms they are ready."""
