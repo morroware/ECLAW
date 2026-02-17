@@ -296,14 +296,13 @@ class StateMachine:
             self._state_timer.cancel()
 
         self.gpio.unregister_win_callback()
-        # Timeout GPIO operations so a hanging hardware call (e.g. lgpio
-        # bus lock on Pi 4) cannot block the turn-end flow forever.
-        # emergency_stop() is designed to never raise, but we still guard
-        # with a timeout in case the single-threaded executor is blocked.
+        # emergency_stop() handles its own timeouts internally via
+        # _gpio_call() and auto-recovers the executor if lgpio blocks.
+        # The outer wait_for is pure defense-in-depth (generous 10 s).
         try:
-            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
+            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
         except (asyncio.TimeoutError, Exception):
-            logger.exception("GPIO emergency_stop timed out or failed — continuing cleanup")
+            logger.exception("GPIO emergency_stop outer timeout — continuing cleanup")
         # ALWAYS unlock GPIO.  This is the critical line that prevents
         # _locked from staying True and killing controls for every
         # subsequent player.  We set the flag directly rather than calling
@@ -437,7 +436,7 @@ class StateMachine:
                 self._turn_timer.cancel()
             self.gpio.unregister_win_callback()
             try:
-                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=5.0)
+                await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
             except (asyncio.TimeoutError, Exception):
                 logger.exception("GPIO emergency_stop failed during force recovery")
             self.gpio._locked = False

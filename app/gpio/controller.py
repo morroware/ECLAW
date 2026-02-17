@@ -3,6 +3,20 @@
 When mock_gpio=True in settings, uses a pure-software mock that logs all
 GPIO operations. This allows the full application to run on any machine
 without real GPIO hardware.
+
+Executor auto-recovery
+~~~~~~~~~~~~~~~~~~~~~~
+All hardware calls are funnelled through a single-threaded
+``ThreadPoolExecutor`` to serialise access to the GPIO chip.  If *any*
+lgpio call blocks (bus contention, kernel driver hiccup, hardware latch-up)
+the executor thread is permanently dead and every subsequent GPIO operation
+would hang behind it forever.
+
+``_gpio_call()`` wraps every executor submission with a timeout.  When a
+timeout fires the dead executor is replaced with a fresh one so the next
+operation runs on a new thread.  The lgpio chip handle stays valid across
+threads (it's a process-level file descriptor), so existing ``OutputDevice``
+objects continue to work on the replacement executor.
 """
 
 import asyncio
@@ -15,7 +29,11 @@ from app.config import settings
 
 logger = logging.getLogger("gpio")
 
-_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpio")
+# Timeouts for executor calls.  These must be generous enough for normal
+# operations but short enough that a stuck thread is detected quickly.
+_GPIO_OP_TIMEOUT = 2.0      # simple on/off/read
+_GPIO_PULSE_TIMEOUT = 5.0   # pulse includes time.sleep() in the thread
+_GPIO_INIT_TIMEOUT = 10.0   # device initialisation / teardown
 
 OPPOSING = {
     "north": "south",
@@ -65,13 +83,65 @@ class GPIOController:
         self._locked = False
         self._initialized = False
         self._win_input = None
+        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="gpio"
+        )
+
+    # -- Executor helper -----------------------------------------------------
+
+    async def _gpio_call(self, func, *args, timeout: float = _GPIO_OP_TIMEOUT) -> bool:
+        """Run a synchronous GPIO function in the executor with a timeout.
+
+        Returns ``True`` on success, ``False`` on timeout or error.
+
+        On timeout the executor thread is presumed dead (stuck in an lgpio
+        syscall) and is replaced with a fresh one so subsequent calls are
+        not permanently blocked.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            await asyncio.wait_for(
+                loop.run_in_executor(self._executor, func, *args),
+                timeout=timeout,
+            )
+            return True
+        except asyncio.TimeoutError:
+            logger.error(
+                "GPIO %s timed out after %.1fs — replacing executor",
+                getattr(func, '__name__', str(func)), timeout,
+            )
+            self._replace_executor()
+            return False
+        except Exception:
+            logger.exception(
+                "GPIO %s failed", getattr(func, '__name__', str(func)),
+            )
+            return False
+
+    def _replace_executor(self):
+        """Abandon a stuck executor and create a fresh one.
+
+        The old thread may still be blocked inside an lgpio call — there is
+        no way to kill it from Python.  ``shutdown(wait=False)`` tells the
+        pool to stop accepting work; the stuck thread will be reaped when
+        the process exits.
+        """
+        old = self._executor
+        self._executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="gpio"
+        )
+        try:
+            old.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        logger.warning("GPIO executor replaced — old thread may still be blocked")
 
     # -- Lifecycle -----------------------------------------------------------
 
     async def initialize(self):
         """Call once at server startup."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._init_devices)
+        if not await self._gpio_call(self._init_devices, timeout=_GPIO_INIT_TIMEOUT):
+            logger.error("GPIO initialisation failed — hardware may not work")
         self._initialized = True
         logger.info("GPIO controller initialized (mock=%s)", settings.mock_gpio)
 
@@ -108,16 +178,21 @@ class GPIOController:
     async def cleanup(self):
         """Call on server shutdown. Forces all OFF, closes devices."""
         await self.emergency_stop()
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_executor, self._close_devices)
+        await self._gpio_call(self._close_devices, timeout=_GPIO_INIT_TIMEOUT)
         logger.info("GPIO controller cleaned up")
 
     def _close_devices(self):
-        for dev in self._outputs.values():
-            dev.off()
-            dev.close()
+        for name, dev in self._outputs.items():
+            try:
+                dev.off()
+                dev.close()
+            except Exception:
+                logger.exception("Failed to close GPIO device %s", name)
         if self._win_input:
-            self._win_input.close()
+            try:
+                self._win_input.close()
+            except Exception:
+                logger.exception("Failed to close win input device")
 
     # -- Emergency Stop ------------------------------------------------------
 
@@ -125,20 +200,17 @@ class GPIOController:
         """Immediately turn all outputs OFF. Cancel all hold tasks.
 
         This method is designed to NEVER raise — it logs errors internally.
-        ``_locked`` is set True at the start and must be cleared by a
-        subsequent call to ``unlock()``.
+        ``_locked`` is set True at the start and must be cleared by the
+        caller (typically ``_end_turn`` sets ``_locked = False`` directly).
         """
         self._locked = True
         for task in self._active_holds.values():
             task.cancel()
         self._active_holds.clear()
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._all_off)
-        except Exception:
-            logger.exception("EMERGENCY STOP: _all_off failed (GPIO may be in bad state)")
-        else:
+        if await self._gpio_call(self._all_off):
             logger.warning("EMERGENCY STOP: all outputs OFF")
+        else:
+            logger.error("EMERGENCY STOP: _all_off failed (GPIO may be in bad state)")
 
     def _all_off(self):
         for name, dev in self._outputs.items():
@@ -146,8 +218,6 @@ class GPIOController:
                 dev.off()
             except Exception:
                 # Continue turning off remaining devices even if one fails.
-                # Re-raise after the loop so the caller knows something went
-                # wrong, but at least we tried every device.
                 logger.exception("Failed to turn off GPIO device %s", name)
 
     async def unlock(self):
@@ -171,11 +241,7 @@ class GPIOController:
         if direction in self._active_holds:
             return True
 
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._outputs[direction].on)
-        except Exception:
-            logger.exception("GPIO direction_on(%s) failed", direction)
+        if not await self._gpio_call(self._outputs[direction].on):
             return False
         logger.debug(f"Direction ON: {direction}")
 
@@ -190,11 +256,7 @@ class GPIOController:
         if direction in self._active_holds:
             self._active_holds[direction].cancel()
             del self._active_holds[direction]
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._outputs[direction].off)
-        except Exception:
-            logger.exception("GPIO direction_off(%s) failed", direction)
+        if not await self._gpio_call(self._outputs[direction].off):
             return False
         logger.debug(f"Direction OFF: {direction}")
         return True
@@ -219,22 +281,14 @@ class GPIOController:
         """Turn on the drop relay (hold). Returns False if rejected or on error."""
         if self._locked:
             return False
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._outputs["drop"].on)
-        except Exception:
-            logger.exception("GPIO drop_on failed")
+        if not await self._gpio_call(self._outputs["drop"].on):
             return False
         logger.debug("Drop relay ON (hold)")
         return True
 
     async def drop_off(self) -> bool:
         """Turn off the drop relay."""
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._outputs["drop"].off)
-        except Exception:
-            logger.exception("GPIO drop_off failed")
+        if not await self._gpio_call(self._outputs["drop"].off):
             return False
         logger.debug("Drop relay OFF")
         return True
@@ -255,11 +309,8 @@ class GPIOController:
         duration_ms = settings.coin_pulse_ms if name == "coin" else settings.drop_pulse_ms
         self._last_pulse[name] = now
 
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(_executor, self._do_pulse, name, duration_ms)
-        except Exception:
-            logger.exception("GPIO pulse(%s) failed", name)
+        if not await self._gpio_call(self._do_pulse, name, duration_ms,
+                                     timeout=_GPIO_PULSE_TIMEOUT):
             return False
         logger.info(f"Pulse {name}: {duration_ms}ms")
         return True
