@@ -328,8 +328,7 @@ input, textarea {
 
 /* Active playing state — subtle border glow */
 #stream-container.playing {
-  box-shadow: inset 0 0 80px rgba(139, 92, 246, 0.06), inset 0 0 2px rgba(139,92,246,0.15);
-  border: 1px solid rgba(139,92,246,0.08);
+  box-shadow: inset 0 0 60px rgba(139, 92, 246, 0.08);
 }
 
 /* -- HUD Overlay (top of video) ------------------------------------------ */
@@ -1469,11 +1468,13 @@ button:hover .btn-shine {
     display: none !important;
   }
 
-  /* More translucent panels on mobile so video feed is visible */
+  /* DISABLE backdrop-filter on mobile — it causes video elements to
+     render as black rectangles on many mobile GPUs (iOS + Android).
+     Use a slightly more opaque solid background instead. */
   .overlay-panel {
-    background: rgba(16, 14, 32, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(10, 10, 20, 0.82);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* Bigger touch targets for mobile */
