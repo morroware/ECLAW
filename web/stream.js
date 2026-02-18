@@ -1,6 +1,7 @@
 /**
  * WebRTC Stream Player — connects to MediaMTX via WHEP protocol,
- * with MJPEG fallback when MediaMTX is not running.
+ * with MJPEG fallback when MediaMTX is not running or when WebRTC
+ * video fails to decode (e.g. unsupported codec on mobile).
  */
 class StreamPlayer {
   constructor(videoElement, streamBaseUrl) {
@@ -11,6 +12,7 @@ class StreamPlayer {
     this._reconnecting = false;
     this._mjpegImg = null;
     this._statusEl = null;
+    this._frameCheckTimer = null;
     this._createStatusOverlay();
   }
 
@@ -57,13 +59,19 @@ class StreamPlayer {
     this.pc.addTransceiver("audio", { direction: "recvonly" });
 
     this.pc.ontrack = (event) => {
-      this._setStatus("WHEP: got track, assigning to video...");
+      const track = event.track;
+      this._setStatus("got track: " + track.kind + " codec=" + (track.getSettings().codec || "?"));
       this.video.srcObject = event.streams[0];
       // Ensure attributes are set in JS for mobile browsers that
       // ignore HTML attributes on dynamically-assigned streams.
       this.video.muted = true;
       this.video.playsInline = true;
       this._tryPlay();
+
+      // Start monitoring for actual frame delivery
+      if (track.kind === "video") {
+        this._startFrameCheck();
+      }
     };
 
     this.pc.oniceconnectionstatechange = () => {
@@ -76,7 +84,6 @@ class StreamPlayer {
           setTimeout(() => this.reconnect(), 3000);
         }
       } else if (state === "disconnected") {
-        // "disconnected" is often transient; give it time to self-recover
         console.warn("Stream disconnected, will reconnect in 10s if not recovered...");
         if (!this._reconnecting) {
           this._reconnecting = true;
@@ -130,6 +137,66 @@ class StreamPlayer {
     const answerSdp = await res.text();
     await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this._setStatus("WHEP: SDP exchanged, waiting for ICE...");
+  }
+
+  /**
+   * Monitor video decode status. If after 5 seconds the video element
+   * has no decoded frames (videoWidth===0), WebRTC video decode failed
+   * (likely unsupported codec). Automatically fall back to MJPEG.
+   */
+  _startFrameCheck() {
+    let checks = 0;
+    this._frameCheckTimer = setInterval(() => {
+      checks++;
+      const v = this.video;
+      const w = v.videoWidth;
+      const h = v.videoHeight;
+      const ready = v.readyState;
+      const paused = v.paused;
+
+      // Get codec info from receiver stats if available
+      let codec = "?";
+      if (this.pc) {
+        const receivers = this.pc.getReceivers();
+        const vidRecv = receivers.find(r => r.track && r.track.kind === "video");
+        if (vidRecv) {
+          codec = vidRecv.track.label || "?";
+        }
+      }
+
+      this._setStatus(
+        "WHEP check #" + checks +
+        ": " + w + "x" + h +
+        " ready=" + ready +
+        " paused=" + paused +
+        " track=" + codec
+      );
+
+      if (w > 0 && h > 0 && ready >= 2) {
+        // Video is decoding frames — success!
+        this._setStatus("WHEP OK: " + w + "x" + h + " playing");
+        clearInterval(this._frameCheckTimer);
+        this._frameCheckTimer = null;
+        return;
+      }
+
+      // After 5 seconds (5 checks at 1s each), video still has no frames.
+      // This typically means the codec is unsupported on this device.
+      // Fall back to MJPEG.
+      if (checks >= 5) {
+        clearInterval(this._frameCheckTimer);
+        this._frameCheckTimer = null;
+        this._setStatus(
+          "WHEP decode FAILED after 5s (" + w + "x" + h +
+          " ready=" + ready + "). Falling back to MJPEG..."
+        );
+        // Disconnect WebRTC and try MJPEG
+        this.disconnect();
+        this._connectMjpeg().catch((e2) => {
+          this._setStatus("MJPEG fallback ALSO failed: " + e2.message);
+        });
+      }
+    }, 1000);
   }
 
   async _connectMjpeg() {
@@ -187,6 +254,10 @@ class StreamPlayer {
   }
 
   disconnect() {
+    if (this._frameCheckTimer) {
+      clearInterval(this._frameCheckTimer);
+      this._frameCheckTimer = null;
+    }
     if (this.pc) {
       this.pc.close();
       this.pc = null;
