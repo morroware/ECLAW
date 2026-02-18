@@ -36,6 +36,11 @@ class StreamPlayer {
 
     this.pc.ontrack = (event) => {
       this.video.srcObject = event.streams[0];
+      // Ensure attributes are set in JS for mobile browsers that
+      // ignore HTML attributes on dynamically-assigned streams.
+      this.video.muted = true;
+      this.video.playsInline = true;
+      this._tryPlay();
     };
 
     this.pc.oniceconnectionstatechange = () => {
@@ -160,5 +165,33 @@ class StreamPlayer {
       this._mjpegImg = null;
       this.video.style.display = "";
     }
+  }
+
+  /**
+   * Force video playback — mobile browsers (especially Safari) can
+   * silently ignore the autoplay attribute on MediaStream changes.
+   * Retries on loadedmetadata if the initial play() is rejected.
+   */
+  _tryPlay() {
+    const video = this.video;
+
+    const attemptPlay = () => {
+      const p = video.play();
+      if (p && typeof p.catch === "function") {
+        p.catch((err) => {
+          console.warn("video.play() rejected:", err.message);
+        });
+      }
+    };
+
+    // Attempt immediately
+    attemptPlay();
+
+    // Also attempt once metadata is ready (covers Safari timing edge cases)
+    video.addEventListener(
+      "loadedmetadata",
+      () => attemptPlay(),
+      { once: true }
+    );
   }
 }

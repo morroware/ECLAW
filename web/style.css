@@ -1477,6 +1477,30 @@ button:hover .btn-shine {
     -webkit-backdrop-filter: none;
   }
 
+  #top-bar {
+    background: rgba(10, 10, 20, 0.85);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  #queue-panel {
+    background: rgba(10, 10, 20, 0.85);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .panel {
+    background: rgba(10, 10, 20, 0.85);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  #current-player-hud {
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
   /* Bigger touch targets for mobile */
   #dpad {
     grid-template-columns: 56px 56px 56px;
