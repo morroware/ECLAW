@@ -1,6 +1,20 @@
 /**
- * ECLAW Sound Engine — Synthesized sound effects via Web Audio API.
- * No audio files required; all sounds are generated procedurally.
+ * ECLAW Sound Engine — Plays custom audio files with synthesized fallbacks.
+ *
+ * Custom sounds: Place audio files in /sounds/ to override the default
+ * synthesized sounds. Supported formats: .mp3, .wav, .ogg, .webm
+ *
+ * File names:
+ *   /sounds/join.mp3       — Player joined the queue
+ *   /sounds/your-turn.mp3  — It's the player's turn (ready prompt)
+ *   /sounds/ready.mp3      — Player confirmed ready
+ *   /sounds/move.mp3       — Direction button pressed
+ *   /sounds/drop.mp3       — Drop button pressed
+ *   /sounds/dropping.mp3   — Claw is descending
+ *   /sounds/win.mp3        — Player won!
+ *   /sounds/loss.mp3       — Player lost
+ *   /sounds/timer.mp3      — Timer warning beep (last 5 seconds)
+ *   /sounds/next-try.mp3   — New try starting after a miss
  */
 class SoundEngine {
   constructor() {
@@ -8,6 +22,12 @@ class SoundEngine {
     this._muted = false;
     this._volume = 0.35;
     this._unlocked = false;
+    /** @type {Object<string, AudioBuffer|null>} */
+    this._customBuffers = {};
+    this._customLoaded = false;
+
+    // Start preloading custom sounds immediately
+    this._preloadCustomSounds();
   }
 
   /** Lazily create and resume AudioContext (must follow user gesture). */
@@ -42,7 +62,61 @@ class SoundEngine {
     return this._muted;
   }
 
-  // -- Internal helpers -----------------------------------------------------
+  // -- Custom Sound Loading -------------------------------------------------
+
+  /** Preload custom audio files from /sounds/ directory. */
+  async _preloadCustomSounds() {
+    const soundNames = [
+      "join", "your-turn", "ready", "move", "drop",
+      "dropping", "win", "loss", "timer", "next-try"
+    ];
+    const extensions = ["mp3", "wav", "ogg", "webm"];
+
+    const loadPromises = soundNames.map(async (name) => {
+      for (const ext of extensions) {
+        try {
+          const res = await fetch(`/sounds/${name}.${ext}`, { method: "HEAD" });
+          if (res.ok) {
+            // File exists — fetch and decode it
+            const audioRes = await fetch(`/sounds/${name}.${ext}`);
+            const arrayBuf = await audioRes.arrayBuffer();
+            const ctx = this._ensure();
+            this._customBuffers[name] = await ctx.decodeAudioData(arrayBuf);
+            return; // Found a file for this sound, stop checking extensions
+          }
+        } catch (e) {
+          // Fetch failed (network error, CORS, etc.) — skip
+        }
+      }
+      // No custom file found for this sound — will use synthesized fallback
+      this._customBuffers[name] = null;
+    });
+
+    await Promise.allSettled(loadPromises);
+    this._customLoaded = true;
+  }
+
+  /**
+   * Play a custom audio buffer if available.
+   * @returns {boolean} true if custom sound was played, false if fallback needed
+   */
+  _playCustom(name, volume) {
+    if (this._muted) return true; // "handled" — skip sound entirely
+    const buffer = this._customBuffers[name];
+    if (!buffer) return false; // No custom sound — use synthesized fallback
+
+    const ctx = this._ensure();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = volume != null ? volume : this._volume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+    return true;
+  }
+
+  // -- Internal helpers (for synthesized fallbacks) -------------------------
 
   _gain(vol) {
     const ctx = this._ensure();
@@ -80,6 +154,7 @@ class SoundEngine {
 
   /** Player joined the queue successfully. */
   playJoinQueue() {
+    if (this._playCustom("join", 0.3)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -92,6 +167,7 @@ class SoundEngine {
 
   /** It's the player's turn — attention-getting rising chime. */
   playYourTurn() {
+    if (this._playCustom("your-turn", 0.4)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -112,6 +188,7 @@ class SoundEngine {
 
   /** Player confirmed ready — short affirmative beep. */
   playReadyConfirm() {
+    if (this._playCustom("ready", 0.3)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -124,6 +201,7 @@ class SoundEngine {
 
   /** Direction button pressed — subtle click. */
   playMove() {
+    if (this._playCustom("move", 0.15)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -135,6 +213,7 @@ class SoundEngine {
 
   /** Drop button pressed — dramatic descending sweep. */
   playDrop() {
+    if (this._playCustom("drop", 0.4)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -163,6 +242,7 @@ class SoundEngine {
 
   /** Win celebration — triumphant fanfare. */
   playWin() {
+    if (this._playCustom("win", 0.5)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -194,6 +274,7 @@ class SoundEngine {
 
   /** Loss — gentle descending tone. */
   playLoss() {
+    if (this._playCustom("loss", 0.3)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -217,6 +298,7 @@ class SoundEngine {
 
   /** Timer warning — short beep, call every second during countdown. */
   playTimerWarning(secondsLeft) {
+    if (this._playCustom("timer", 0.25)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -231,6 +313,7 @@ class SoundEngine {
 
   /** New try starting (after a miss). */
   playNextTry() {
+    if (this._playCustom("next-try", 0.3)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;
@@ -244,6 +327,7 @@ class SoundEngine {
 
   /** Dropping state — mechanical descending whir. */
   playDropping() {
+    if (this._playCustom("dropping", 0.3)) return;
     if (this._muted) return;
     const ctx = this._ensure();
     const t = ctx.currentTime;

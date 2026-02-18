@@ -52,6 +52,7 @@
   const soundToggle = $("#sound-toggle");
   const timerBar = $("#timer-bar");
   const streamContainer = $("#stream-container");
+  const dropBtn = $("#drop-btn");
 
   // -- Sound Toggle ---------------------------------------------------------
   function updateSoundIcon() {
@@ -367,7 +368,7 @@
     }
   });
 
-  // -- Drop Buttons (momentary press, like directional buttons) -------------
+  // -- Drop Button (unified — single button for desktop + mobile) ----------
 
   function setupDropButton(btn) {
     if (!btn) return;
@@ -408,15 +409,14 @@
     btn.style.touchAction = "none";
   }
 
-  setupDropButton($("#drop-btn-desktop"));
-  setupDropButton($("#drop-btn-mobile"));
+  setupDropButton(dropBtn);
 
-  // -- Desktop Visual D-Pad Click Handling ----------------------------------
+  // -- D-Pad Click Handling (mouse clicks on the unified dpad) --------------
 
-  const visualDpad = $("#visual-dpad");
-  if (visualDpad) {
-    const vdpadBtns = visualDpad.querySelectorAll(".vdpad-btn[data-dir]");
-    vdpadBtns.forEach((btn) => {
+  const dpadEl = $("#dpad");
+  if (dpadEl) {
+    const dpadBtns = dpadEl.querySelectorAll(".dpad-btn[data-dir]");
+    dpadBtns.forEach((btn) => {
       btn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         const dir = btn.dataset.dir;
@@ -507,7 +507,7 @@
     // Set up keyboard controls (returns a teardown function)
     _keyboardTeardown = setupKeyboard(controlSocket, sfx);
 
-    // Set up touch D-pad
+    // Set up touch D-pad on the unified dpad element
     const dpad = $("#dpad");
     if (dpad) {
       _dpadInstance = new TouchDPad(dpad, controlSocket, sfx);
@@ -563,20 +563,13 @@
 
   function setControlsEnabled(enabled) {
     const dpad = $("#dpad");
-    const vdpad = $("#visual-dpad");
-    const dropDesktop = $("#drop-btn-desktop");
-    const dropMobile = $("#drop-btn-mobile");
 
     if (enabled) {
       if (dpad) dpad.classList.remove("disabled");
-      if (vdpad) vdpad.classList.remove("disabled");
-      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.innerHTML = '<span class="drop-btn-icon">&#9660;</span>DROP<span class="key-hint">SPACE</span>'; }
-      if (dropMobile) { dropMobile.disabled = false; dropMobile.innerHTML = '<span class="drop-btn-icon">&#9660;</span>DROP'; }
+      if (dropBtn) { dropBtn.disabled = false; dropBtn.innerHTML = '<span class="drop-btn-icon">&#9660;</span>DROP<span class="key-hint">SPACE</span>'; }
     } else {
       if (dpad) dpad.classList.add("disabled");
-      if (vdpad) vdpad.classList.add("disabled");
-      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.innerHTML = "DROPPING\u2026"; }
-      if (dropMobile) { dropMobile.disabled = true; dropMobile.innerHTML = "DROPPING\u2026"; }
+      if (dropBtn) { dropBtn.disabled = true; dropBtn.innerHTML = "DROPPING\u2026"; }
     }
   }
 
