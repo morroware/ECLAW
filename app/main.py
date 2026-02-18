@@ -139,7 +139,12 @@ async def _periodic_queue_check(sm, interval_seconds: int | None = None):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
-    logger.info("Starting claw machine server")
+    from app.config import _resolve_env_file
+    env_path = _resolve_env_file()
+    logger.info(
+        "Starting claw machine server (env_file=%s, exists=%s)",
+        env_path, env_path.exists(),
+    )
     settings.warn_insecure_defaults()
     app.state.start_time = time.time()
     app.state.background_tasks = set()
