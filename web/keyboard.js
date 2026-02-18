@@ -21,10 +21,10 @@ function setupKeyboard(controlSocket, sfx) {
   };
 
   const DIR_TO_SELECTOR = {
-    north: ".vdpad-up",
-    south: ".vdpad-down",
-    west:  ".vdpad-left",
-    east:  ".vdpad-right",
+    north: ".dpad-up",
+    south: ".dpad-down",
+    west:  ".dpad-left",
+    east:  ".dpad-right",
   };
 
   const pressed = new Set();
