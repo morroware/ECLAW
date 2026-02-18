@@ -3,9 +3,16 @@ Description=MediaMTX Streaming Server
 After=network.target
 
 [Service]
+# Pre-flight: verify binary and config exist before attempting start
+ExecStartPre=/usr/bin/test -x /usr/local/bin/mediamtx
+ExecStartPre=/usr/bin/test -f /etc/mediamtx.yml
 ExecStart=/usr/local/bin/mediamtx /etc/mediamtx.yml
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=5
+# Cap restart attempts: if MediaMTX crashes 5 times in 60s, stop trying
+# (prevents log spam from a persistent config/hardware problem)
+StartLimitIntervalSec=60
+StartLimitBurst=5
 User=mediamtx
 SupplementaryGroups=video
 LimitNOFILE=4096
