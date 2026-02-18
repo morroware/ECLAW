@@ -10,17 +10,39 @@ class StreamPlayer {
     this.sessionUrl = null;
     this._reconnecting = false;
     this._mjpegImg = null;
+    this._statusEl = null;
+    this._createStatusOverlay();
+  }
+
+  /** Temporary diagnostic overlay — shows stream status on-screen. */
+  _createStatusOverlay() {
+    const el = document.createElement("div");
+    el.id = "stream-debug";
+    el.style.cssText =
+      "position:absolute;bottom:8px;right:8px;z-index:999;" +
+      "background:rgba(0,0,0,0.75);color:#0f0;font:11px/1.3 monospace;" +
+      "padding:4px 8px;border-radius:4px;pointer-events:none;" +
+      "max-width:90%;word-break:break-all;";
+    this.video.parentNode.appendChild(el);
+    this._statusEl = el;
+    this._setStatus("init");
+  }
+
+  _setStatus(msg) {
+    if (this._statusEl) this._statusEl.textContent = "stream: " + msg;
+    console.log("[stream]", msg);
   }
 
   async connect() {
+    this._setStatus("connecting (WHEP)...");
     try {
       await this._connectWhep();
     } catch (e) {
-      console.warn("WHEP unavailable, trying MJPEG fallback:", e.message);
+      this._setStatus("WHEP failed: " + e.message + " — trying MJPEG...");
       try {
         await this._connectMjpeg();
       } catch (e2) {
-        console.warn("MJPEG also unavailable:", e2.message);
+        this._setStatus("ALL FAILED. WHEP: " + e.message + " | MJPEG: " + e2.message);
         throw e2;
       }
     }
@@ -35,6 +57,7 @@ class StreamPlayer {
     this.pc.addTransceiver("audio", { direction: "recvonly" });
 
     this.pc.ontrack = (event) => {
+      this._setStatus("WHEP: got track, assigning to video...");
       this.video.srcObject = event.streams[0];
       // Ensure attributes are set in JS for mobile browsers that
       // ignore HTML attributes on dynamically-assigned streams.
@@ -45,6 +68,7 @@ class StreamPlayer {
 
     this.pc.oniceconnectionstatechange = () => {
       const state = this.pc.iceConnectionState;
+      this._setStatus("ICE: " + state);
       if (state === "failed") {
         console.warn("Stream failed, reconnecting in 3s...");
         if (!this._reconnecting) {
@@ -72,6 +96,8 @@ class StreamPlayer {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
 
+    this._setStatus("WHEP: gathering ICE candidates...");
+
     // Wait for ICE gathering to complete (or timeout)
     await new Promise((resolve) => {
       if (this.pc.iceGatheringState === "complete") {
@@ -88,6 +114,8 @@ class StreamPlayer {
       }
     });
 
+    this._setStatus("WHEP: POST to " + this.baseUrl + "/whep ...");
+
     const res = await fetch(this.baseUrl + "/whep", {
       method: "POST",
       headers: { "Content-Type": "application/sdp" },
@@ -101,15 +129,19 @@ class StreamPlayer {
     this.sessionUrl = res.headers.get("Location");
     const answerSdp = await res.text();
     await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-    console.log("Stream connected via WHEP");
+    this._setStatus("WHEP: SDP exchanged, waiting for ICE...");
   }
 
   async _connectMjpeg() {
+    this._setStatus("MJPEG: probing /api/stream/snapshot...");
+
     // Verify the MJPEG endpoint is available with a snapshot probe
     const probe = await fetch("/api/stream/snapshot");
     if (!probe.ok) {
       throw new Error(`MJPEG not available: ${probe.status}`);
     }
+
+    this._setStatus("MJPEG: snapshot OK, starting stream...");
 
     // Hide the <video> element and insert an <img> for MJPEG
     const img = document.createElement("img");
@@ -124,7 +156,7 @@ class StreamPlayer {
 
     // Auto-reconnect on MJPEG stream error (e.g., server restart)
     img.onerror = () => {
-      console.warn("MJPEG stream error, reconnecting in 3s...");
+      this._setStatus("MJPEG: stream error, reconnecting in 3s...");
       setTimeout(() => {
         if (this._mjpegImg) {
           this._mjpegImg.src = "/api/stream/mjpeg?" + Date.now();
@@ -132,11 +164,15 @@ class StreamPlayer {
       }, 3000);
     };
 
+    img.onload = () => {
+      this._setStatus("MJPEG: receiving frames");
+    };
+
     this.video.style.display = "none";
     this.video.parentNode.insertBefore(img, this.video.nextSibling);
     this._mjpegImg = img;
 
-    console.log("Stream connected via MJPEG fallback");
+    this._setStatus("MJPEG: connected");
   }
 
   async reconnect() {
@@ -179,7 +215,7 @@ class StreamPlayer {
       const p = video.play();
       if (p && typeof p.catch === "function") {
         p.catch((err) => {
-          console.warn("video.play() rejected:", err.message);
+          this._setStatus("play() rejected: " + err.message);
         });
       }
     };
@@ -190,7 +226,10 @@ class StreamPlayer {
     // Also attempt once metadata is ready (covers Safari timing edge cases)
     video.addEventListener(
       "loadedmetadata",
-      () => attemptPlay(),
+      () => {
+        this._setStatus("WHEP: metadata loaded, playing...");
+        attemptPlay();
+      },
       { once: true }
     );
   }
