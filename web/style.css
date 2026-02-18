@@ -94,8 +94,9 @@ body {
   user-select: none;
   /* Prevent tap highlight on mobile */
   -webkit-tap-highlight-color: transparent;
-  /* Fixed positioning to prevent iOS address bar issues */
-  position: fixed;
+  /* NOTE: position:fixed removed from body — it creates a compositing
+     context that prevents <video> from rendering on mobile GPUs.
+     overflow:hidden + overscroll-behavior:none handles scroll/bounce. */
   width: 100%;
 }
 
@@ -315,7 +316,10 @@ input, textarea {
 
 #stream-container {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
   background: #000;
   overflow: hidden;
@@ -329,8 +333,9 @@ input, textarea {
   /* Force own GPU compositing layer — prevents mobile browsers from
      failing to render the video due to ancestor compositing conflicts
      (position:fixed on body, animated bg-particles, etc.). */
-  transform: translateZ(0);
   -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Active playing state — subtle border glow */
@@ -1475,13 +1480,10 @@ button:hover .btn-shine {
     display: none !important;
   }
 
-  /* DISABLE animated bg-particles on mobile — animated transforms create
-     GPU compositing layers that conflict with <video> rendering. */
-  #bg-particles,
-  #bg-particles::before,
-  #bg-particles::after {
-    animation: none !important;
-    background: none !important;
+  /* HIDE bg-particles entirely on mobile — position:fixed + animated
+     transforms create GPU compositing layers that conflict with <video>. */
+  #bg-particles {
+    display: none !important;
   }
 
   /* DISABLE backdrop-filter on mobile — it causes video elements to
