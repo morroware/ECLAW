@@ -91,7 +91,14 @@ clean_pi() {
             sudo systemctl stop "$svc"
             ok "Stopped $svc"
         fi
+        if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+            sudo systemctl disable "$svc" 2>/dev/null
+        fi
     done
+
+    # Clear any failure state / start-limit counters so the fresh install
+    # can start services immediately (critical after crash-loops).
+    sudo systemctl reset-failed claw-watchdog claw-server mediamtx 2>/dev/null || true
 
     # Remove service files
     for unit in claw-server.service claw-watchdog.service mediamtx.service; do
@@ -102,6 +109,9 @@ clean_pi() {
     # Remove nginx config
     sudo rm -f /etc/nginx/sites-enabled/claw
     sudo rm -f /etc/nginx/sites-available/claw
+    if command -v nginx &>/dev/null && sudo nginx -t 2>/dev/null; then
+        sudo systemctl reload nginx 2>/dev/null || true
+    fi
 
     # Remove application directory
     if [ -d /opt/claw ]; then

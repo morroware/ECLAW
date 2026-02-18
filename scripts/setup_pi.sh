@@ -238,6 +238,10 @@ echo ""
 echo -e "${BOLD}[8/8] Enabling and starting services...${NC}"
 sudo systemctl enable mediamtx claw-server claw-watchdog 2>/dev/null
 
+# Clear any prior failure state / start-limit counters from previous installs
+# so services can start cleanly (critical if MediaMTX was crash-looping).
+sudo systemctl reset-failed mediamtx claw-server claw-watchdog 2>/dev/null || true
+
 sudo systemctl start mediamtx 2>/dev/null || warn "mediamtx failed to start (camera may not be connected)"
 sleep 1
 sudo systemctl start claw-server 2>/dev/null || warn "claw-server failed to start"
