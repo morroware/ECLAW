@@ -1,6 +1,6 @@
 /* ==========================================================================
-   The Castle Fun Center — Remote Claw Machine UI
-   Professional arcade-themed design
+   The Castle Fun Center — Remote Claw Machine
+   Immersive Game-First UI — Video is the star
    ========================================================================== */
 
 /* -- Reset & Custom Properties ------------------------------------------- */
@@ -12,77 +12,155 @@
 }
 
 :root {
-  --bg:             #0c0a1a;
-  --bg-gradient:    linear-gradient(170deg, #0c0a1a 0%, #110e24 50%, #0d0b1e 100%);
-  --surface:        #161330;
-  --surface-2:      #1e1a3a;
-  --surface-3:      #262050;
-  --primary:        #7c3aed;
-  --primary-glow:   rgba(124, 58, 237, 0.35);
-  --primary-hover:  #8b5cf6;
+  /* Core palette — deep space arcade */
+  --bg:             #0a0a0f;
+  --bg-subtle:      #0e0e18;
+  --surface:        rgba(16, 14, 32, 0.85);
+  --surface-solid:  #100e20;
+  --surface-2:      rgba(24, 20, 50, 0.9);
+  --surface-3:      rgba(36, 30, 70, 0.9);
+  --glass:          rgba(16, 14, 32, 0.65);
+  --glass-border:   rgba(255, 255, 255, 0.08);
+
+  /* Accent colors */
+  --primary:        #8b5cf6;
+  --primary-bright: #a78bfa;
+  --primary-glow:   rgba(139, 92, 246, 0.4);
+  --primary-dim:    rgba(139, 92, 246, 0.15);
+
   --accent:         #f59e0b;
-  --accent-glow:    rgba(245, 158, 11, 0.3);
+  --accent-glow:    rgba(245, 158, 11, 0.35);
+
+  --neon-cyan:      #22d3ee;
+  --neon-cyan-glow: rgba(34, 211, 238, 0.3);
+
   --success:        #10b981;
-  --success-glow:   rgba(16, 185, 129, 0.3);
+  --success-bright: #34d399;
+  --success-glow:   rgba(16, 185, 129, 0.35);
+
   --danger:         #ef4444;
-  --danger-glow:    rgba(239, 68, 68, 0.3);
+  --danger-bright:  #f87171;
+  --danger-glow:    rgba(239, 68, 68, 0.35);
+
   --warning:        #f59e0b;
-  --text:           #f1f5f9;
-  --text-dim:       #94a3b8;
-  --text-muted:     #64748b;
-  --border:         #2a2650;
-  --border-bright:  #3d3670;
-  --radius:         10px;
+
+  /* Text */
+  --text:           #f0f0f5;
+  --text-dim:       #9ca3af;
+  --text-muted:     #6b7280;
+
+  /* Layout */
+  --border:         rgba(255, 255, 255, 0.06);
+  --border-bright:  rgba(255, 255, 255, 0.1);
+  --radius:         12px;
   --radius-lg:      16px;
-  --shadow:         0 4px 24px rgba(0, 0, 0, 0.4);
-  --shadow-glow:    0 0 30px var(--primary-glow);
+  --radius-xl:      20px;
   --transition:     0.2s ease;
+
+  /* Typography */
+  --font-body:      'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display:   'Orbitron', 'Inter', sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
-  background-image: var(--bg-gradient);
   color: var(--text);
   min-height: 100dvh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* -- Animated Background Particles --------------------------------------- */
+
+#bg-particles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(34, 211, 238, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(245, 158, 11, 0.03) 0%, transparent 50%);
+}
+
+#bg-particles::before,
+#bg-particles::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  animation: floatParticle 20s ease-in-out infinite;
+}
+
+#bg-particles::before {
+  width: 300px;
+  height: 300px;
+  top: 10%;
+  left: -5%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+}
+
+#bg-particles::after {
+  width: 250px;
+  height: 250px;
+  bottom: 20%;
+  right: -5%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.06) 0%, transparent 70%);
+  animation-delay: -10s;
+  animation-duration: 25s;
+}
+
+@keyframes floatParticle {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -20px) scale(1.1); }
+  66%      { transform: translate(-20px, 15px) scale(0.95); }
 }
 
 /* -- App Container ------------------------------------------------------- */
 
 #app {
-  max-width: 520px;
+  position: relative;
+  z-index: 1;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 8px 10px 24px;
+  padding: 0 12px 24px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* -- Header -------------------------------------------------------------- */
+/* -- Top Bar ------------------------------------------------------------- */
 
-#header {
+#top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 10px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
+  margin-top: 8px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  text-decoration: none;
   min-width: 0;
 }
 
 .brand-icon {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.4));
 }
 
 .brand-text {
@@ -92,49 +170,52 @@ body {
 }
 
 .brand-name {
-  font-size: 0.95rem;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
   font-weight: 800;
   color: var(--accent);
-  letter-spacing: 0.5px;
-  line-height: 1.1;
+  letter-spacing: 2px;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 0 20px var(--accent-glow);
 }
 
 .brand-sub {
-  font-size: 0.65rem;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
   color: var(--text-dim);
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
+  letter-spacing: 3px;
   font-weight: 500;
 }
 
 #header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 /* Sound toggle */
 #sound-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
   color: var(--text-dim);
-  font-size: 1.1rem;
-  padding: 4px 7px;
+  font-size: 1rem;
+  padding: 5px 8px;
   cursor: pointer;
   transition: all var(--transition);
   line-height: 1;
 }
 #sound-toggle:hover {
+  background: rgba(255,255,255,0.1);
   border-color: var(--primary);
   color: var(--text);
 }
 #sound-toggle.muted {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 /* Status indicators */
@@ -142,8 +223,9 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .status-dot {
@@ -155,20 +237,17 @@ body {
 }
 .status-dot.connected {
   background: var(--success);
-  box-shadow: 0 0 6px var(--success-glow);
-  animation: pulse-dot 2s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--success-glow);
+  animation: pulseDot 2s ease-in-out infinite;
 }
 .status-dot.disconnected {
   background: var(--danger);
+  box-shadow: 0 0 6px var(--danger-glow);
 }
 
-@keyframes pulse-dot {
+@keyframes pulseDot {
   0%, 100% { box-shadow: 0 0 4px var(--success-glow); }
-  50%      { box-shadow: 0 0 10px var(--success-glow); }
-}
-
-#viewer-count, #latency-display {
-  font-variant-numeric: tabular-nums;
+  50%      { box-shadow: 0 0 12px var(--success-glow); }
 }
 
 #latency-display {
@@ -176,55 +255,43 @@ body {
   text-align: right;
 }
 
-/* -- Game Area (Video + Controls side-by-side on desktop) ---------------- */
+/* ==========================================================================
+   VIDEO STAGE — The Star of the Show
+   ========================================================================== */
 
-#game-area {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+#stage {
+  width: 100%;
 }
-
-/* -- Video Stream -------------------------------------------------------- */
 
 #stream-container {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
-  border-radius: var(--radius);
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  border: 2px solid var(--border-bright);
-  box-shadow: var(--shadow);
-  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 8px 40px rgba(0, 0, 0, 0.6),
+    0 0 60px rgba(139, 92, 246, 0.05);
+  transition: border-color 0.5s ease, box-shadow 0.5s ease;
 }
 
-/* Active playing state — video glows to show it's live-controlled */
+/* Active playing state — dramatic glow */
 #stream-container.playing {
   border-color: var(--primary);
-  box-shadow: 0 0 25px var(--primary-glow), 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(139, 92, 246, 0.3),
+    0 0 40px var(--primary-glow),
+    0 0 80px rgba(139, 92, 246, 0.15),
+    0 8px 40px rgba(0, 0, 0, 0.5);
+  animation: videoGlow 3s ease-in-out infinite;
 }
 
-/* LIVE indicator badge */
-#live-badge {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  background: var(--danger);
-  color: white;
-  font-size: 0.55rem;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: 3px;
-  letter-spacing: 1.5px;
-  z-index: 2;
-  pointer-events: none;
-  box-shadow: 0 0 8px var(--danger-glow);
-  animation: pulse-live 2s ease-in-out infinite;
-}
-
-@keyframes pulse-live {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.5; }
+@keyframes videoGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(139,92,246,0.3), 0 0 40px var(--primary-glow), 0 0 80px rgba(139,92,246,0.12), 0 8px 40px rgba(0,0,0,0.5); }
+  50%      { box-shadow: 0 0 0 1px rgba(139,92,246,0.5), 0 0 60px var(--primary-glow), 0 0 100px rgba(139,92,246,0.2), 0 8px 40px rgba(0,0,0,0.5); }
 }
 
 #stream-video, #mjpeg-stream {
@@ -234,57 +301,178 @@ body {
   display: block;
 }
 
-#stream-overlay {
+/* -- HUD Overlay (top of video) ------------------------------------------ */
+
+#hud-top {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  padding: 10px 14px;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 60%, transparent 100%);
   pointer-events: none;
+  z-index: 2;
+}
+
+#hud-top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#hud-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* LIVE badge */
+#live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 4px;
+  letter-spacing: 2px;
+  box-shadow: 0 0 12px var(--danger-glow);
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
 }
 
 #game-state-display {
-  font-size: 0.8rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
   color: var(--accent);
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  text-shadow: 0 0 10px var(--accent-glow), 0 1px 4px rgba(0,0,0,0.8);
 }
 
 #try-display {
-  font-size: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-dim);
+  letter-spacing: 1px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
 }
 
 #timer-display {
-  font-size: 1.3rem;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+  text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px currentColor;
   min-width: 2.5ch;
   text-align: right;
+  line-height: 1;
 }
 
-/* -- Panels (shared) ----------------------------------------------------- */
+/* Timer bar at bottom of video */
+#timer-bar-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(255,255,255,0.05);
+  z-index: 2;
+}
+
+#timer-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--primary-bright));
+  border-radius: 0 2px 2px 0;
+  width: 100%;
+  transition: width 0.25s linear, background 0.3s ease;
+  box-shadow: 0 0 8px var(--neon-cyan-glow);
+}
+
+#timer-bar.warning {
+  background: linear-gradient(90deg, var(--warning), var(--accent));
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+#timer-bar.danger {
+  background: linear-gradient(90deg, var(--danger), var(--danger-bright));
+  box-shadow: 0 0 12px var(--danger-glow);
+  animation: timerPulse 0.5s ease-in-out infinite;
+}
+
+@keyframes timerPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+/* ==========================================================================
+   PANELS — Shared Styles
+   ========================================================================== */
 
 .panel {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-  animation: fadeSlideIn 0.3s ease-out;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  animation: panelSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .panel h2 {
-  font-size: 1.1rem;
-  margin-bottom: 10px;
+  font-family: var(--font-display);
+  font-size: 1rem;
   font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+/* Card variant with glow accent */
+.card {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-glow {
+  position: absolute;
+  top: -1px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary-bright), transparent);
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.card-glow.ready-glow {
+  background: linear-gradient(90deg, transparent, var(--success-bright), transparent);
+}
+
+.card-subtitle {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  margin-top: -6px;
 }
 
 .hidden {
@@ -296,35 +484,39 @@ body {
   font-size: 0.85rem;
 }
 
-@keyframes fadeSlideIn {
+@keyframes panelSlideIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
-/* -- Queue Info Bar + Live Queue List ------------------------------------ */
+/* ==========================================================================
+   QUEUE INFO PANEL
+   ========================================================================== */
 
 #queue-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: 10px 16px;
 }
 
 #queue-info {
   display: flex;
   justify-content: space-between;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--text-dim);
 }
 
 #current-player-display {
-  color: var(--primary-hover);
+  color: var(--primary-bright);
   font-weight: 600;
 }
 
@@ -343,16 +535,16 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 10px;
-  border-radius: 6px;
-  background: var(--surface-2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
   font-size: 0.8rem;
   transition: all var(--transition);
   border-left: 3px solid transparent;
 }
 
 .queue-entry.state-active {
-  background: rgba(124, 58, 237, 0.12);
+  background: var(--primary-dim);
   border-left-color: var(--primary);
 }
 
@@ -367,14 +559,15 @@ body {
 }
 
 .queue-state {
-  font-size: 0.7rem;
+  font-family: var(--font-display);
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   color: var(--text-muted);
 }
 
-.state-active .queue-state { color: var(--primary-hover); }
+.state-active .queue-state { color: var(--primary-bright); }
 .state-ready .queue-state  { color: var(--success); }
 
 .queue-empty {
@@ -384,7 +577,9 @@ body {
   text-align: center;
 }
 
-/* -- Join Form ----------------------------------------------------------- */
+/* ==========================================================================
+   FORMS & INPUTS
+   ========================================================================== */
 
 #join-form {
   display: flex;
@@ -394,76 +589,123 @@ body {
 
 input[type="text"],
 input[type="email"] {
-  padding: 12px 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   color: var(--text);
   font-size: 1rem;
+  font-family: var(--font-body);
   outline: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
 }
 
 input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  box-shadow: 0 0 0 3px var(--primary-dim), 0 0 20px rgba(139,92,246,0.1);
+  background: rgba(255,255,255,0.06);
 }
 
 input::placeholder {
   color: var(--text-muted);
 }
 
-/* -- Buttons ------------------------------------------------------------- */
+/* ==========================================================================
+   BUTTONS — Professional Game Buttons
+   ========================================================================== */
 
 button {
-  padding: 11px 20px;
+  padding: 12px 24px;
   border: none;
   border-radius: var(--radius);
   font-size: 1rem;
   font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: all 0.15s ease;
   touch-action: manipulation;
+  position: relative;
+  overflow: hidden;
 }
+
 button:active {
   transform: scale(0.97);
 }
 
+/* Shine sweep effect on buttons */
+.btn-shine {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  pointer-events: none;
+  transition: none;
+}
+
+button:hover .btn-shine {
+  animation: btnShineSweep 0.6s ease forwards;
+}
+
+@keyframes btnShineSweep {
+  from { left: -100%; }
+  to   { left: 100%; }
+}
+
+/* Join button */
 #join-btn {
   background: linear-gradient(135deg, var(--primary), #6d28d9);
   color: white;
-  font-size: 1.05rem;
-  padding: 13px 20px;
-  box-shadow: 0 2px 12px var(--primary-glow);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 16px 24px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.15);
 }
+
 #join-btn:hover {
-  background: linear-gradient(135deg, var(--primary-hover), #7c3aed);
-  box-shadow: 0 4px 20px var(--primary-glow);
+  background: linear-gradient(135deg, var(--primary-bright), #7c3aed);
+  box-shadow: 0 6px 30px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: translateY(-1px);
 }
+
+#join-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
 #join-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
+/* Leave button */
 #leave-btn {
   background: transparent;
   color: var(--danger);
-  border: 1px solid var(--danger);
-  margin-top: 8px;
-  font-size: 0.9rem;
-  padding: 9px 16px;
-}
-#leave-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  margin-top: 12px;
+  font-size: 0.85rem;
+  padding: 10px 20px;
+  width: 100%;
 }
 
+#leave-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Big action buttons */
 .big-btn {
-  padding: 14px 28px;
-  font-size: 1.2rem;
-  border-radius: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  padding: 18px 32px;
+  font-size: 1.1rem;
+  border-radius: var(--radius-lg);
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-family: var(--font-display);
 }
 
 .error {
@@ -472,138 +714,213 @@ button:active {
   margin-top: 6px;
 }
 
-/* -- Waiting Panel ------------------------------------------------------- */
+/* ==========================================================================
+   WAITING PANEL
+   ========================================================================== */
+
+#waiting-panel {
+  text-align: center;
+}
 
 #waiting-panel h2 {
   color: var(--accent);
+  font-size: 1.2rem;
 }
 
-#waiting-panel p {
-  color: var(--text-dim);
-  font-size: 0.95rem;
-  margin-bottom: 4px;
+.waiting-animation {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-#waiting-panel strong {
+.pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  opacity: 0;
+  animation: pulseExpand 2s ease-out infinite;
+}
+
+.pulse-ring.delay {
+  animation-delay: 1s;
+}
+
+@keyframes pulseExpand {
+  0%   { transform: scale(0.5); opacity: 0.6; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+.waiting-icon {
+  font-size: 2rem;
+  z-index: 1;
+}
+
+.waiting-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin: 16px 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 800;
   color: var(--text);
-  font-size: 1.1rem;
 }
 
-/* -- Ready Panel --------------------------------------------------------- */
+/* ==========================================================================
+   READY PANEL
+   ========================================================================== */
 
 #ready-panel {
   text-align: center;
-  border-color: var(--success);
-  box-shadow: 0 0 20px var(--success-glow);
-  animation: fadeSlideIn 0.3s ease-out, glowPulse 2s ease-in-out infinite;
+  border-color: rgba(16, 185, 129, 0.3);
+  animation: panelSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1), readyBorderGlow 2s ease-in-out infinite;
 }
 
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 15px var(--success-glow); }
-  50%      { box-shadow: 0 0 30px var(--success-glow); }
+@keyframes readyBorderGlow {
+  0%, 100% { box-shadow: 0 0 20px var(--success-glow); }
+  50%      { box-shadow: 0 0 40px var(--success-glow), 0 0 60px rgba(16, 185, 129, 0.15); }
+}
+
+.ready-alert {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ready-icon {
+  font-size: 2.5rem;
+  animation: readyBounce 1s ease-in-out infinite;
+}
+
+@keyframes readyBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-6px) scale(1.1); }
 }
 
 #ready-panel h2 {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   color: var(--success);
-  margin-bottom: 6px;
+  text-shadow: 0 0 30px var(--success-glow);
 }
 
-#ready-panel p {
+.ready-subtitle {
   color: var(--text-dim);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
 }
 
+/* Ready button */
 #ready-btn {
   background: linear-gradient(135deg, var(--success), #059669);
   color: white;
   width: 100%;
-  box-shadow: 0 2px 16px var(--success-glow);
-  animation: readyPulse 1.2s ease-in-out infinite;
-}
-#ready-btn:hover {
-  filter: brightness(1.1);
+  box-shadow: 0 4px 24px var(--success-glow), inset 0 1px 0 rgba(255,255,255,0.2);
 }
 
-@keyframes readyPulse {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.03); }
+#ready-btn:hover {
+  box-shadow: 0 6px 32px var(--success-glow), inset 0 1px 0 rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+
+.ready-btn-pulse {
+  animation: readyBtnPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes readyBtnPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 4px 24px var(--success-glow); }
+  50%      { transform: scale(1.02); box-shadow: 0 6px 36px var(--success-glow), 0 0 50px rgba(16,185,129,0.15); }
 }
 
 #ready-timer {
   text-align: center;
-  margin-top: 12px;
-  font-size: 1.8rem;
-  font-weight: 800;
+  margin-top: 14px;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 900;
   color: var(--warning);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 16px var(--accent-glow);
 }
 
-/* -- Controls Panel ------------------------------------------------------ */
+/* ==========================================================================
+   CONTROLS PANEL — Game HUD
+   ========================================================================== */
 
 #controls-panel {
-  border-color: var(--primary);
-  box-shadow: 0 0 15px var(--primary-glow);
-  padding: 14px;
+  border-color: rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.1);
+  padding: 16px;
 }
 
 #controls-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
 #ctrl-try {
-  font-size: 0.85rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-dim);
+  letter-spacing: 1px;
 }
 
 #ctrl-timer {
+  font-family: var(--font-display);
   font-size: 1.3rem;
-  font-weight: 800;
-  color: var(--accent);
+  font-weight: 900;
+  color: var(--neon-cyan);
   font-variant-numeric: tabular-nums;
   min-width: 2.5ch;
   text-align: right;
+  text-shadow: 0 0 12px var(--neon-cyan-glow);
 }
 
-/* Timer progress bar (visual countdown below controls-info) */
-#timer-bar-container {
-  height: 3px;
-  background: var(--surface-2);
-  border-radius: 2px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-#timer-bar {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  width: 100%;
-  transition: width 0.25s linear, background 0.3s ease;
-}
-#timer-bar.danger { background: var(--danger); }
-#timer-bar.warning { background: var(--warning); }
-
-/* -- Desktop Visual Controls --------------------------------------------- */
+/* ==========================================================================
+   DESKTOP D-PAD — Professional Game Controls
+   ========================================================================== */
 
 #desktop-controls {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* Visual joystick grid for desktop — compact 48px cells */
 #visual-dpad {
   display: grid;
-  grid-template-columns: 48px 48px 48px;
-  grid-template-rows: 48px 48px 48px;
-  gap: 3px;
+  grid-template-columns: 56px 56px 56px;
+  grid-template-rows: 56px 56px 56px;
+  gap: 4px;
   user-select: none;
 }
 
@@ -612,37 +929,37 @@ button:active {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  background: var(--surface-2);
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  gap: 2px;
+  background: rgba(255,255,255,0.04);
+  border: 2px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
   color: var(--text-dim);
-  font-size: 1rem;
   cursor: pointer;
   transition: all 0.1s ease;
   position: relative;
 }
 
 .vdpad-btn:hover {
-  border-color: var(--border-bright);
+  border-color: rgba(255,255,255,0.15);
   color: var(--text);
-  background: var(--surface-3);
+  background: rgba(255,255,255,0.07);
 }
 
 .vdpad-btn.active,
 .vdpad-btn:active {
-  background: var(--primary);
-  border-color: var(--primary-hover);
+  background: linear-gradient(135deg, var(--primary), #6d28d9);
+  border-color: var(--primary-bright);
   color: white;
-  box-shadow: 0 0 12px var(--primary-glow);
+  box-shadow: 0 0 16px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: scale(0.95);
 }
 
 .vdpad-btn .key-label {
-  font-size: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 0.45rem;
   font-weight: 600;
-  letter-spacing: 0.5px;
-  margin-top: 1px;
-  opacity: 0.6;
-  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.5;
 }
 
 .vdpad-btn.active .key-label {
@@ -650,21 +967,14 @@ button:active {
 }
 
 .vdpad-center {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
   cursor: default;
-  font-size: 0.55rem;
   color: var(--text-muted);
-  letter-spacing: 0.5px;
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.vdpad-center:hover {
-  background: var(--surface);
-  border-color: var(--border);
-  color: var(--text-muted);
 }
 
 .vdpad-up    { grid-column: 2; grid-row: 1; }
@@ -673,56 +983,84 @@ button:active {
 .vdpad-right { grid-column: 3; grid-row: 2; }
 .vdpad-down  { grid-column: 2; grid-row: 3; }
 
-/* Drop button (shared between desktop and mobile) */
+/* ==========================================================================
+   DROP BUTTON — The Big Red Button
+   ========================================================================== */
+
 .drop-btn {
-  background: linear-gradient(135deg, var(--danger), #dc2626);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--danger), #b91c1c);
   color: white;
   width: 100%;
-  max-width: 200px;
-  box-shadow: 0 2px 10px var(--danger-glow);
+  max-width: 220px;
+  box-shadow:
+    0 4px 20px var(--danger-glow),
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    inset 0 -2px 0 rgba(0,0,0,0.2);
+  font-family: var(--font-display);
   font-size: 1rem;
-  padding: 10px 20px;
-  border-radius: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 14px 24px;
+  border-radius: var(--radius-lg);
 }
 
 .drop-btn:hover {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  box-shadow: 0 4px 20px var(--danger-glow);
+  background: linear-gradient(135deg, var(--danger-bright), #dc2626);
+  box-shadow:
+    0 6px 28px var(--danger-glow),
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    inset 0 -2px 0 rgba(0,0,0,0.2);
+  transform: translateY(-1px);
+}
+
+.drop-btn:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow:
+    0 2px 12px var(--danger-glow),
+    inset 0 2px 4px rgba(0,0,0,0.3);
 }
 
 .drop-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   background: var(--surface-3);
   box-shadow: none;
   transform: none;
 }
 
-/* Keyboard shortcut hint on desktop drop button */
-.drop-btn .key-hint {
-  font-size: 0.6rem;
-  opacity: 0.7;
-  font-weight: 500;
-  display: block;
-  margin-top: 1px;
+.drop-btn-icon {
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
 
-/* -- Mobile D-Pad (Touch) ------------------------------------------------ */
+.drop-btn .key-hint {
+  font-size: 0.5rem;
+  font-weight: 600;
+  opacity: 0.6;
+  letter-spacing: 1.5px;
+  margin-left: 4px;
+}
+
+/* ==========================================================================
+   MOBILE D-PAD
+   ========================================================================== */
 
 #dpad-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 #dpad {
   display: grid;
-  grid-template-columns: 56px 56px 56px;
-  grid-template-rows: 56px 56px 56px;
-  gap: 4px;
+  grid-template-columns: 64px 64px 64px;
+  grid-template-rows: 64px 64px 64px;
+  gap: 5px;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -732,10 +1070,9 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface-2);
-  border: 2px solid var(--border);
-  border-radius: 8px;
-  font-size: 1.3rem;
+  background: rgba(255,255,255,0.05);
+  border: 2px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
   color: var(--text);
   cursor: pointer;
   transition: all 0.08s ease;
@@ -743,18 +1080,20 @@ button:active {
 
 .dpad-btn:active,
 .dpad-btn.active {
-  background: var(--primary);
-  border-color: var(--primary-hover);
-  box-shadow: 0 0 14px var(--primary-glow);
-  transform: scale(0.95);
+  background: linear-gradient(135deg, var(--primary), #6d28d9);
+  border-color: var(--primary-bright);
+  box-shadow: 0 0 20px var(--primary-glow);
+  transform: scale(0.93);
+  color: white;
 }
 
 .dpad-center {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
   cursor: default;
   border-radius: 50%;
 }
+
 .dpad-center:active {
   transform: none;
   box-shadow: none;
@@ -769,36 +1108,38 @@ button:active {
 /* Disabled controls (during drop) */
 #dpad.disabled .dpad-btn,
 #visual-dpad.disabled .vdpad-btn {
-  opacity: 0.3;
+  opacity: 0.25;
   pointer-events: none;
 }
 
-/* -- Result Panel -------------------------------------------------------- */
+/* ==========================================================================
+   RESULT PANEL
+   ========================================================================== */
 
 #result-panel {
   text-align: center;
-  padding: 28px 18px;
+  padding: 32px 20px;
 }
 
 #result-panel h2 {
-  font-size: 2rem;
-  margin-bottom: 8px;
+  font-size: 2.2rem;
+  margin-bottom: 10px;
 }
 
 .result-win {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.08);
   color: var(--success);
 }
 
 .result-loss {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.08);
   color: var(--danger);
 }
 
 #result-title.win {
-  color: var(--success);
-  text-shadow: 0 0 20px var(--success-glow);
-  animation: resultBounce 0.5s ease-out;
+  color: var(--success-bright);
+  text-shadow: 0 0 30px var(--success-glow), 0 0 60px rgba(16,185,129,0.2);
+  animation: resultBounce 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #result-title.loss {
@@ -806,14 +1147,14 @@ button:active {
 }
 
 @keyframes resultBounce {
-  0%   { transform: scale(0.5); opacity: 0; }
-  70%  { transform: scale(1.1); }
+  0%   { transform: scale(0.3); opacity: 0; }
+  60%  { transform: scale(1.08); }
   100% { transform: scale(1); opacity: 1; }
 }
 
 #result-message {
   color: var(--text-dim);
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   font-size: 0.95rem;
 }
 
@@ -821,25 +1162,36 @@ button:active {
   background: linear-gradient(135deg, var(--primary), #6d28d9);
   color: white;
   width: 100%;
-  box-shadow: 0 2px 12px var(--primary-glow);
-  font-size: 1.05rem;
-  padding: 13px;
-}
-#play-again-btn:hover {
-  box-shadow: 0 4px 20px var(--primary-glow);
+  box-shadow: 0 4px 20px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.15);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 16px;
 }
 
-/* -- History Panel ------------------------------------------------------- */
+#play-again-btn:hover {
+  box-shadow: 0 6px 28px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   HISTORY PANEL
+   ========================================================================== */
 
 #history-panel {
   border-color: var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 #history-panel h2 {
-  font-size: 0.8rem;
+  font-family: var(--font-display);
+  font-size: 0.65rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
   font-weight: 600;
 }
 
@@ -853,9 +1205,9 @@ button:active {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 0;
+  padding: 6px 0;
   font-size: 0.8rem;
-  border-bottom: 1px solid rgba(42, 38, 80, 0.5);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 
 .history-entry:last-child {
@@ -866,13 +1218,14 @@ button:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  min-width: 36px;
-  height: 20px;
-  border-radius: 4px;
-  font-size: 0.65rem;
+  width: 38px;
+  min-width: 38px;
+  height: 22px;
+  border-radius: 5px;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .history-name {
@@ -891,111 +1244,111 @@ button:active {
   flex-shrink: 0;
 }
 
-/* -- Responsive: Desktop vs Mobile --------------------------------------- */
+/* ==========================================================================
+   RESPONSIVE DESIGN
+   ========================================================================== */
 
 .desktop-only { display: flex; }
 .mobile-only  { display: none; }
 
-/* Medium screens (600-767px) — slight width bump */
+/* Tablet (600-767px) */
 @media (min-width: 600px) {
   #app {
-    max-width: 560px;
-    padding: 12px 16px 32px;
+    max-width: 700px;
+    padding: 0 16px 32px;
   }
 }
 
-/* Desktop wide layout (768px+) — video + controls side-by-side */
+/* Desktop (768px+) — video fills width, controls below */
 @media (min-width: 768px) {
   #app {
-    max-width: 880px;
-    padding: 12px 20px 32px;
+    max-width: 900px;
+    padding: 0 20px 32px;
   }
 
-  /* Game area becomes a row: video fills space, controls in sidebar */
-  #game-area {
-    flex-direction: row;
-    gap: 12px;
-    align-items: start;
+  /* Keep video full-width — it's the star */
+  #stream-container {
+    border-radius: var(--radius-xl);
   }
 
-  #game-area > #stream-container {
-    flex: 1;
-    min-width: 0;
-  }
-
-  #game-area > #controls-panel {
-    width: 220px;
-    flex-shrink: 0;
-  }
-
-  /* Controls panel compact sidebar styling */
-  #controls-panel {
-    padding: 12px;
-  }
-
-  #ctrl-timer {
-    font-size: 1.15rem;
-  }
-
-  .drop-btn {
-    max-width: 100%;
-  }
-
-  /* Center the non-game panels for visual focus */
+  /* Center the non-game panels below the video */
   #queue-panel,
   #join-panel,
   #waiting-panel,
   #ready-panel,
   #result-panel,
-  #history-panel {
+  #history-panel,
+  #controls-panel {
     max-width: 560px;
     margin-left: auto;
     margin-right: auto;
   }
+
+  .drop-btn {
+    max-width: 280px;
+  }
+
+  #visual-dpad {
+    grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 60px 60px 60px;
+    gap: 5px;
+  }
 }
 
-/* Mobile breakpoint */
+/* Large desktop (1100px+) — even wider video */
+@media (min-width: 1100px) {
+  #app {
+    max-width: 1060px;
+  }
+}
+
+/* Mobile (<=599px) */
 @media (max-width: 599px) {
   .desktop-only { display: none !important; }
   .mobile-only  { display: flex !important; }
 
   #app {
-    padding: 4px 6px 16px;
-    gap: 6px;
+    padding: 0 6px 16px;
+    gap: 8px;
   }
 
-  #game-area {
-    gap: 6px;
+  #top-bar {
+    padding: 8px 12px;
+    margin-top: 4px;
+    border-radius: 10px;
   }
 
-  #header { padding: 8px 12px; }
+  .brand-name { font-size: 0.72rem; letter-spacing: 1.5px; }
+  .brand-sub  { font-size: 0.48rem; letter-spacing: 2px; }
 
-  .brand-name { font-size: 0.85rem; }
-  .brand-sub  { font-size: 0.6rem; }
+  #stream-container {
+    border-radius: 14px;
+  }
 
-  .panel { padding: 14px; }
+  .panel {
+    padding: 16px;
+    border-radius: 14px;
+  }
 
-  /* Compact mobile D-Pad — 56px buttons (down from 76px) */
+  /* Bigger mobile D-Pad for easier touch */
   #dpad {
-    grid-template-columns: 56px 56px 56px;
-    grid-template-rows: 56px 56px 56px;
-    gap: 4px;
+    grid-template-columns: 64px 64px 64px;
+    grid-template-rows: 64px 64px 64px;
+    gap: 5px;
   }
-
-  .dpad-btn { font-size: 1.4rem; }
 
   .drop-btn {
     max-width: 100%;
-    padding: 10px;
-    font-size: 1rem;
+    padding: 14px;
+    font-size: 0.95rem;
   }
 
   #result-panel h2 { font-size: 1.8rem; }
-
   #ctrl-timer { font-size: 1.2rem; }
+  #controls-panel { padding: 12px; }
 
-  #controls-panel {
-    padding: 10px;
+  #timer-display {
+    font-size: 1.3rem;
   }
 }
 
@@ -1005,7 +1358,9 @@ button:active {
   .mobile-only  { display: flex !important; }
 }
 
-/* -- Utility animations -------------------------------------------------- */
+/* ==========================================================================
+   UTILITY ANIMATIONS
+   ========================================================================== */
 
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
@@ -1019,7 +1374,10 @@ button:active {
   animation: shake 0.4s ease-out;
 }
 
-/* Confetti container (used by JS for win celebrations) */
+/* ==========================================================================
+   CONFETTI
+   ========================================================================== */
+
 #confetti-container {
   position: fixed;
   top: 0;
@@ -1042,4 +1400,31 @@ button:active {
 @keyframes confettiFall {
   0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+/* ==========================================================================
+   SELECTION & SCROLLBAR STYLING
+   ========================================================================== */
+
+::selection {
+  background: var(--primary-dim);
+  color: var(--text);
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
 }

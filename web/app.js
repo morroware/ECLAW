@@ -303,7 +303,7 @@
 
     // Disable button to prevent double-submit
     joinBtn.disabled = true;
-    joinBtn.textContent = "Joining...";
+    joinBtn.querySelector(".btn-text").textContent = "JOINING...";
 
     try {
       const res = await fetch("/api/queue/join", {
@@ -338,7 +338,7 @@
       setTimeout(() => joinPanel.classList.remove("shake"), 400);
     } finally {
       joinBtn.disabled = false;
-      joinBtn.textContent = "Join Queue";
+      joinBtn.querySelector(".btn-text").textContent = "JOIN QUEUE";
     }
   });
 
@@ -550,13 +550,13 @@
     if (enabled) {
       if (dpad) dpad.classList.remove("disabled");
       if (vdpad) vdpad.classList.remove("disabled");
-      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.innerHTML = 'DROP<span class="key-hint">Spacebar</span>'; }
-      if (dropMobile) { dropMobile.disabled = false; dropMobile.textContent = "DROP"; }
+      if (dropDesktop) { dropDesktop.disabled = false; dropDesktop.innerHTML = '<span class="drop-btn-icon">&#9660;</span>DROP<span class="key-hint">SPACE</span>'; }
+      if (dropMobile) { dropMobile.disabled = false; dropMobile.innerHTML = '<span class="drop-btn-icon">&#9660;</span>DROP'; }
     } else {
       if (dpad) dpad.classList.add("disabled");
       if (vdpad) vdpad.classList.add("disabled");
-      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.innerHTML = "DROPPING..."; }
-      if (dropMobile) { dropMobile.disabled = true; dropMobile.textContent = "DROPPING..."; }
+      if (dropDesktop) { dropDesktop.disabled = true; dropDesktop.innerHTML = "DROPPING\u2026"; }
+      if (dropMobile) { dropMobile.disabled = true; dropMobile.innerHTML = "DROPPING\u2026"; }
     }
   }
 
