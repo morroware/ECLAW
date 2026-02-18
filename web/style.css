@@ -69,18 +69,12 @@
   --safe-right:  env(safe-area-inset-right, 0px);
 }
 
-html {
+html, body {
   height: 100%;
   overflow: hidden;
-  /* NOTE: position:fixed removed from html — it causes <video> compositing
-     failures on mobile GPUs.  body's position:fixed + overscroll-behavior:none
-     is sufficient to prevent iOS elastic bounce. */
-  width: 100%;
 }
 
 body {
-  height: 100%;
-  overflow: hidden;
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
@@ -88,16 +82,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
   /* Prevent pull-to-refresh and overscroll */
   overscroll-behavior: none;
-  -webkit-overflow-scrolling: touch;
   /* Prevent text selection during gameplay */
   -webkit-user-select: none;
   user-select: none;
   /* Prevent tap highlight on mobile */
   -webkit-tap-highlight-color: transparent;
-  /* NOTE: position:fixed removed from body — it creates a compositing
-     context that prevents <video> from rendering on mobile GPUs.
-     overflow:hidden + overscroll-behavior:none handles scroll/bounce. */
-  width: 100%;
 }
 
 /* Allow text selection in form inputs */
@@ -316,11 +305,7 @@ input, textarea {
 
 #stream-container {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
+  inset: 0;
   background: #000;
   overflow: hidden;
 }
@@ -330,12 +315,6 @@ input, textarea {
   height: 100%;
   object-fit: contain;
   display: block;
-  /* Force own GPU compositing layer — prevents mobile browsers from
-     failing to render the video due to ancestor compositing conflicts
-     (position:fixed on body, animated bg-particles, etc.). */
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  will-change: transform;
 }
 
 /* Active playing state — subtle border glow */
@@ -386,12 +365,6 @@ input, textarea {
   border-radius: 4px;
   letter-spacing: 2px;
   box-shadow: 0 0 12px var(--danger-glow);
-  animation: liveBadgePulse 2s ease-in-out infinite;
-}
-
-@keyframes liveBadgePulse {
-  0%, 100% { box-shadow: 0 0 8px var(--danger-glow); }
-  50%      { box-shadow: 0 0 16px var(--danger-glow), 0 0 24px rgba(239,68,68,0.15); }
 }
 
 .live-dot {
@@ -1478,45 +1451,6 @@ button:hover .btn-shine {
   .key-label,
   .key-hint {
     display: none !important;
-  }
-
-  /* HIDE bg-particles entirely on mobile — position:fixed + animated
-     transforms create GPU compositing layers that conflict with <video>. */
-  #bg-particles {
-    display: none !important;
-  }
-
-  /* DISABLE backdrop-filter on mobile — it causes video elements to
-     render as black rectangles on many mobile GPUs (iOS + Android).
-     Use a slightly more opaque solid background instead. */
-  .overlay-panel {
-    background: rgba(10, 10, 20, 0.82);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  #top-bar {
-    background: rgba(10, 10, 20, 0.85);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  #queue-panel {
-    background: rgba(10, 10, 20, 0.85);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .panel {
-    background: rgba(10, 10, 20, 0.85);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  #current-player-hud {
-    background: rgba(0, 0, 0, 0.82);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
 
   /* Bigger touch targets for mobile */
