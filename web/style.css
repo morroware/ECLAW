@@ -72,8 +72,9 @@
 html {
   height: 100%;
   overflow: hidden;
-  /* Prevent iOS elastic bounce */
-  position: fixed;
+  /* NOTE: position:fixed removed from html — it causes <video> compositing
+     failures on mobile GPUs.  body's position:fixed + overscroll-behavior:none
+     is sufficient to prevent iOS elastic bounce. */
   width: 100%;
 }
 
@@ -159,8 +160,8 @@ input, textarea {
   z-index: 1;
   display: flex;
   flex-direction: column;
+  height: 100vh; /* fallback for browsers without dvh */
   height: 100dvh;
-  height: 100vh; /* fallback */
   overflow: hidden;
   padding-top: var(--safe-top);
   padding-left: var(--safe-left);
@@ -315,6 +316,7 @@ input, textarea {
 #stream-container {
   position: absolute;
   inset: 0;
+  z-index: 1;
   background: #000;
   overflow: hidden;
 }
@@ -324,6 +326,11 @@ input, textarea {
   height: 100%;
   object-fit: contain;
   display: block;
+  /* Force own GPU compositing layer — prevents mobile browsers from
+     failing to render the video due to ancestor compositing conflicts
+     (position:fixed on body, animated bg-particles, etc.). */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 /* Active playing state — subtle border glow */
@@ -1466,6 +1473,15 @@ button:hover .btn-shine {
   .key-label,
   .key-hint {
     display: none !important;
+  }
+
+  /* DISABLE animated bg-particles on mobile — animated transforms create
+     GPU compositing layers that conflict with <video> rendering. */
+  #bg-particles,
+  #bg-particles::before,
+  #bg-particles::after {
+    animation: none !important;
+    background: none !important;
   }
 
   /* DISABLE backdrop-filter on mobile — it causes video elements to
