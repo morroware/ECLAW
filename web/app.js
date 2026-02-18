@@ -433,36 +433,9 @@
 
   setupDropButton(dropBtn);
 
-  // -- D-Pad Click Handling (mouse clicks on the unified dpad) --------------
-
-  const dpadEl = $("#dpad");
-  if (dpadEl) {
-    const dpadBtns = dpadEl.querySelectorAll(".dpad-btn[data-dir]");
-    dpadBtns.forEach((btn) => {
-      btn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        const dir = btn.dataset.dir;
-        if (controlSocket) {
-          controlSocket.keydown(dir);
-          sfx.playMove();
-        }
-        btn.classList.add("active");
-      });
-      btn.addEventListener("mouseup", (e) => {
-        e.preventDefault();
-        const dir = btn.dataset.dir;
-        if (controlSocket) controlSocket.keyup(dir);
-        btn.classList.remove("active");
-      });
-      btn.addEventListener("mouseleave", () => {
-        if (btn.classList.contains("active")) {
-          const dir = btn.dataset.dir;
-          if (controlSocket) controlSocket.keyup(dir);
-          btn.classList.remove("active");
-        }
-      });
-    });
-  }
+  // D-Pad input is handled entirely by TouchDPad (pointer events).
+  // TouchDPad requires pointer-down before processing movement,
+  // so it works correctly as click-and-hold on both desktop and mobile.
 
   // -- Play Again -----------------------------------------------------------
 
