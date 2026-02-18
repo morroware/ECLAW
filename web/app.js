@@ -51,6 +51,7 @@
   const historyList = $("#history-list");
   const soundToggle = $("#sound-toggle");
   const timerBar = $("#timer-bar");
+  const streamContainer = $("#stream-container");
 
   // -- Sound Toggle ---------------------------------------------------------
   function updateSoundIcon() {
@@ -667,6 +668,7 @@
     clearInterval(readyTimerInterval);
     timerDisplay.textContent = "";
     updateTimerBar(0);
+    if (streamContainer) streamContainer.classList.remove("playing");
 
     switch (newState) {
       case null:
@@ -702,6 +704,7 @@
 
       case "active":
         controlsPanel.classList.remove("hidden");
+        if (streamContainer) streamContainer.classList.add("playing");
         // Remove focus from any element (e.g. the Ready button) so that
         // Space keydown goes to the document-level keyboard handler
         // instead of re-triggering a focused button.
