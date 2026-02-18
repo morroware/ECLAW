@@ -166,9 +166,7 @@ input, textarea {
   justify-content: space-between;
   align-items: center;
   padding: 6px 12px;
-  background: var(--glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--surface-solid);
   border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
   z-index: 20;
@@ -422,9 +420,8 @@ input, textarea {
   align-items: center;
   gap: 6px;
   padding: 4px 14px 4px 10px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.85);
+  /* No backdrop-filter — causes black video on mobile (WebKit compositing bug) */
   border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: 20px;
   pointer-events: none;
@@ -500,9 +497,8 @@ input, textarea {
   width: 84%;
   max-width: 340px;
   padding: 20px;
-  background: var(--surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--surface-solid);
+  /* No backdrop-filter — causes black video on mobile (WebKit compositing bug) */
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1269,9 +1265,7 @@ button:hover .btn-shine {
    ========================================================================== */
 
 #queue-panel {
-  background: var(--glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--surface-solid);
   border-top: 1px solid var(--glass-border);
   border-bottom: 1px solid var(--glass-border);
   padding: 5px 12px;
@@ -1362,9 +1356,7 @@ button:hover .btn-shine {
    ========================================================================== */
 
 .panel {
-  background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--surface-solid);
   border-top: 1px solid var(--glass-border);
   padding: 6px 12px;
   padding-bottom: calc(6px + var(--safe-bottom));
