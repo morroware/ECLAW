@@ -8,12 +8,20 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
+from app.config import settings
+
 router = APIRouter(prefix="/api")
 
-_MAX_MJPEG_STREAMS = 20
-# Semaphore guarantees atomic acquire/release — no race between the
-# check and increment that the old bare-counter approach had.
-_mjpeg_semaphore = asyncio.Semaphore(_MAX_MJPEG_STREAMS)
+# Lazy-initialized semaphore — created on first request so the value
+# comes from settings (which may be overridden via .env).
+_mjpeg_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _mjpeg_semaphore
+    if _mjpeg_semaphore is None:
+        _mjpeg_semaphore = asyncio.Semaphore(settings.max_mjpeg_streams)
+    return _mjpeg_semaphore
 
 
 @router.get("/stream/snapshot")
@@ -35,11 +43,12 @@ async def mjpeg_stream(request: Request):
     if not camera or not camera.is_running:
         raise HTTPException(503, "Camera not available")
 
-    if _mjpeg_semaphore.locked():
+    sem = _get_semaphore()
+    if sem.locked():
         raise HTTPException(503, "Too many active streams")
 
     async def generate():
-        await _mjpeg_semaphore.acquire()
+        await sem.acquire()
         try:
             while True:
                 if await request.is_disconnected():
@@ -53,9 +62,9 @@ async def mjpeg_stream(request: Request):
                         + frame
                         + b"\r\n"
                     )
-                await asyncio.sleep(1 / 30)
+                await asyncio.sleep(1 / settings.mjpeg_fps)
         finally:
-            _mjpeg_semaphore.release()
+            sem.release()
 
     return StreamingResponse(
         generate(),

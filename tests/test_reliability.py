@@ -475,19 +475,15 @@ async def test_ghost_player_skipped(api_client):
 
 def test_keepalive_constants():
     """Verify keepalive timing invariants."""
-    from app.ws.control_handler import (
-        _CTRL_LIVENESS_TIMEOUT_S,
-        _CTRL_PING_INTERVAL_S,
-        _SEND_TIMEOUT_S,
-    )
+    from app.config import settings
     # Liveness timeout must be > ping interval (otherwise every ping
     # round would trigger a false liveness failure)
-    assert _CTRL_LIVENESS_TIMEOUT_S > _CTRL_PING_INTERVAL_S
+    assert settings.control_liveness_timeout_s > settings.control_ping_interval_s
     # Send timeout must be reasonable (not too short, not too long)
-    assert 0.5 <= _SEND_TIMEOUT_S <= 10.0
+    assert 0.5 <= settings.control_send_timeout_s <= 10.0
     # Ping interval should give enough time for several round-trips
     # before liveness timeout fires
-    assert _CTRL_LIVENESS_TIMEOUT_S >= 2 * _CTRL_PING_INTERVAL_S
+    assert settings.control_liveness_timeout_s >= 2 * settings.control_ping_interval_s
 
 
 # ===========================================================================

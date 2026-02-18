@@ -7,15 +7,9 @@ import logging
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
+from app.config import settings
+
 logger = logging.getLogger("ws.status")
-
-
-_MAX_STATUS_VIEWERS = 500
-
-# Per-client send timeout: if a single viewer can't receive within this
-# window it is considered dead and evicted.  Prevents one stalled client
-# from blocking broadcasts to all other viewers.
-_SEND_TIMEOUT_S = 5.0
 
 
 class StatusHub:
@@ -24,7 +18,7 @@ class StatusHub:
 
     async def connect(self, ws: WebSocket) -> bool:
         """Accept a viewer connection. Returns False if limit reached."""
-        if len(self._clients) >= _MAX_STATUS_VIEWERS:
+        if len(self._clients) >= settings.max_status_viewers:
             await ws.accept()
             await ws.close(1013, "Too many viewers")
             return False
@@ -51,7 +45,7 @@ class StatusHub:
         async def _send(ws: WebSocket):
             try:
                 if ws.client_state == WebSocketState.CONNECTED:
-                    await asyncio.wait_for(ws.send_text(payload), timeout=_SEND_TIMEOUT_S)
+                    await asyncio.wait_for(ws.send_text(payload), timeout=settings.status_send_timeout_s)
             except Exception:
                 dead.add(ws)
 

@@ -66,6 +66,64 @@ class Settings(BaseSettings):
     # DB maintenance: hours to keep completed entries before pruning
     db_retention_hours: int = 48
 
+    # -- WebSocket limits -----------------------------------------------------
+
+    # Status hub: broadcast channel for all viewers
+    max_status_viewers: int = 500
+    status_send_timeout_s: float = 5.0
+    status_keepalive_interval_s: int = 30
+
+    # Control handler: authenticated per-player channel
+    max_control_connections: int = 100
+    control_send_timeout_s: float = 2.0
+    control_ping_interval_s: int = 20
+    control_liveness_timeout_s: int = 60
+    control_auth_timeout_s: int = 10
+    control_max_message_bytes: int = 1024
+
+    # -- MJPEG / Camera -------------------------------------------------------
+
+    max_mjpeg_streams: int = 20
+    mjpeg_fps: int = 30
+    camera_width: int = 1280
+    camera_height: int = 720
+    camera_fps: int = 30
+    camera_warmup_frames: int = 5
+    camera_max_consecutive_failures: int = 100
+    camera_jpeg_quality: int = 80
+
+    # -- Rate limiting --------------------------------------------------------
+
+    rate_limit_window_s: int = 3600
+    rate_limit_sweep_interval_s: int = 600
+    join_rate_per_ip: int = 30
+    join_rate_per_email: int = 15
+    health_check_timeout_s: float = 2.0
+    history_limit: int = 20
+
+    # -- Database tuning ------------------------------------------------------
+
+    db_busy_timeout_ms: int = 5000
+
+    # -- Background task intervals --------------------------------------------
+
+    db_prune_interval_s: int = 3600
+    rate_limit_prune_age_s: int = 3600
+    queue_check_interval_s: int = 10
+
+    # -- State machine internals ----------------------------------------------
+
+    ghost_player_age_s: int = 30
+    coin_post_pulse_delay_s: float = 0.5
+    emergency_stop_timeout_s: float = 10.0
+    turn_end_stuck_timeout_s: int = 30
+
+    # -- GPIO executor timeouts -----------------------------------------------
+
+    gpio_op_timeout_s: float = 2.0
+    gpio_pulse_timeout_s: float = 5.0
+    gpio_init_timeout_s: float = 10.0
+
     model_config = {
         "env_file": os.environ.get("ECLAW_ENV_FILE", ".env"),
         "env_file_encoding": "utf-8",

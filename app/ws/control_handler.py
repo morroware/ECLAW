@@ -13,24 +13,6 @@ logger = logging.getLogger("ws.control")
 
 VALID_DIRECTIONS = {"north", "south", "east", "west"}
 
-# Hard cap on total simultaneous control WebSocket connections.
-# Each queued/active player opens one.  The limit prevents resource
-# exhaustion if many unauthenticated connections arrive before the
-# 10-second auth timeout ejects them.
-_MAX_CONTROL_CONNECTIONS = 100
-
-# Per-player send timeout.  If a control socket cannot accept a message
-# within this window the connection is considered dead and evicted so
-# state-machine transitions are not blocked by network stalls.
-_SEND_TIMEOUT_S = 2.0
-
-# Keepalive interval and liveness threshold for control connections.
-# A ping is sent every _CTRL_PING_INTERVAL_S seconds.  If no pong (or
-# any message) arrives within _CTRL_LIVENESS_TIMEOUT_S the socket is
-# presumed half-open and closed proactively.
-_CTRL_PING_INTERVAL_S = 20
-_CTRL_LIVENESS_TIMEOUT_S = 60
-
 
 class ControlHandler:
     def __init__(self, state_machine, queue_manager, gpio_controller, settings):
@@ -46,7 +28,7 @@ class ControlHandler:
 
     async def handle_connection(self, ws: WebSocket):
         """Handle a full control WebSocket lifecycle."""
-        if self._total_connections >= _MAX_CONTROL_CONNECTIONS:
+        if self._total_connections >= self.settings.max_control_connections:
             await ws.accept()
             await ws.close(1013, "Too many connections")
             return
@@ -56,7 +38,7 @@ class ControlHandler:
         entry_id = None
         try:
             # First message must be auth
-            raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
+            raw = await asyncio.wait_for(ws.receive_text(), timeout=self.settings.control_auth_timeout_s)
             msg = json.loads(raw)
             if msg.get("type") != "auth" or "token" not in msg:
                 await ws.send_text(json.dumps({"type": "error", "message": "Auth required"}))
@@ -149,7 +131,7 @@ class ControlHandler:
                             self._grace_tasks[entry_id] = task
 
     async def _handle_message(self, entry_id: str, raw: str, ws: WebSocket):
-        if len(raw) > 1024:
+        if len(raw) > self.settings.control_max_message_bytes:
             return  # Reject oversized messages
         try:
             msg = json.loads(raw)
@@ -225,20 +207,20 @@ class ControlHandler:
     async def _keepalive_ping(self, entry_id: str, ws: WebSocket):
         """Periodic ping for control channel liveness detection.
 
-        Sends an application-level ping every _CTRL_PING_INTERVAL_S seconds.
+        Sends an application-level ping every control_ping_interval_s seconds.
         If no message (including the pong reply) has been received within
-        _CTRL_LIVENESS_TIMEOUT_S, the socket is presumed half-open and
+        control_liveness_timeout_s, the socket is presumed half-open and
         closed so disconnect handling fires promptly.
         """
         try:
             while True:
-                await asyncio.sleep(_CTRL_PING_INTERVAL_S)
+                await asyncio.sleep(self.settings.control_ping_interval_s)
                 # Check liveness: has any message arrived recently?
                 last = self._last_activity.get(entry_id, 0)
-                if time.monotonic() - last > _CTRL_LIVENESS_TIMEOUT_S:
+                if time.monotonic() - last > self.settings.control_liveness_timeout_s:
                     logger.warning(
                         "Control keepalive: no activity from %s for >%ds, closing",
-                        entry_id, _CTRL_LIVENESS_TIMEOUT_S,
+                        entry_id, self.settings.control_liveness_timeout_s,
                     )
                     try:
                         await ws.close(1001, "Liveness timeout")
@@ -249,7 +231,7 @@ class ControlHandler:
                 try:
                     await asyncio.wait_for(
                         ws.send_text(json.dumps({"type": "ping"})),
-                        timeout=_SEND_TIMEOUT_S,
+                        timeout=self.settings.control_send_timeout_s,
                     )
                 except (asyncio.TimeoutError, Exception):
                     logger.warning("Control keepalive: ping send failed for %s", entry_id)
@@ -268,7 +250,7 @@ class ControlHandler:
         if ws:
             try:
                 await asyncio.wait_for(
-                    ws.send_text(json.dumps(message)), timeout=_SEND_TIMEOUT_S
+                    ws.send_text(json.dumps(message)), timeout=self.settings.control_send_timeout_s
                 )
             except (asyncio.TimeoutError, Exception):
                 logger.warning("send_to_player: evicting dead socket for %s", entry_id)
