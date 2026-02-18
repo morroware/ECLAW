@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Optional
 
+from app.config import settings
+
 logger = logging.getLogger("camera")
 
 
@@ -57,11 +59,12 @@ def _find_camera_device(preferred: int = 0) -> Optional[int]:
 class Camera:
     """Captures frames from a V4L2/USB camera using OpenCV."""
 
-    def __init__(self, device: int = 0, width: int = 1280, height: int = 720, fps: int = 30):
+    def __init__(self, device: int = 0, width: int | None = None,
+                 height: int | None = None, fps: int | None = None):
         self.device = device
-        self.width = width
-        self.height = height
-        self.fps = fps
+        self.width = width if width is not None else settings.camera_width
+        self.height = height if height is not None else settings.camera_height
+        self.fps = fps if fps is not None else settings.camera_fps
         self._cap = None
         self._lock = threading.Lock()
         self._frame: Optional[bytes] = None
@@ -96,7 +99,7 @@ class Camera:
         self._cap.set(cv2.CAP_PROP_FPS, self.fps)
 
         # Warm-up: some USB cameras need a few frames before producing good output
-        for _ in range(5):
+        for _ in range(settings.camera_warmup_frames):
             self._cap.read()
 
         self._running = True
@@ -116,12 +119,12 @@ class Camera:
             ret, frame = self._cap.read()
             if ret:
                 consecutive_failures = 0
-                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, settings.camera_jpeg_quality])
                 with self._lock:
                     self._frame = jpeg.tobytes()
             else:
                 consecutive_failures += 1
-                if consecutive_failures > 100:
+                if consecutive_failures > settings.camera_max_consecutive_failures:
                     logger.error("Camera lost — too many consecutive read failures")
                     self._running = False
                     break

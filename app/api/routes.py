@@ -104,13 +104,13 @@ def check_rate_limit(key: str, max_per_hour: int):
     now = time.time()
 
     # Periodic sweep of stale entries to prevent unbounded memory growth
-    if now - _last_rate_limit_sweep > 600:  # Every 10 minutes
+    if now - _last_rate_limit_sweep > settings.rate_limit_sweep_interval_s:
         _last_rate_limit_sweep = now
-        stale = [k for k, v in _join_limits.items() if all(now - t >= 3600 for t in v)]
+        stale = [k for k, v in _join_limits.items() if all(now - t >= settings.rate_limit_window_s for t in v)]
         for k in stale:
             del _join_limits[k]
 
-    recent = [t for t in _join_limits[key] if now - t < 3600]
+    recent = [t for t in _join_limits[key] if now - t < settings.rate_limit_window_s]
     if not recent:
         _join_limits.pop(key, None)
     else:
@@ -187,10 +187,10 @@ async def queue_join(body: JoinRequest, request: Request):
 
     ip = _get_client_ip(request)
     # Fast in-memory check first (hot path), then durable DB check
-    check_rate_limit(f"ip:{ip}", 30)
-    check_rate_limit(f"email:{normalized_email}", 15)
-    await check_rate_limit_db(f"ip:{ip}", 30)
-    await check_rate_limit_db(f"email:{normalized_email}", 15)
+    check_rate_limit(f"ip:{ip}", settings.join_rate_per_ip)
+    check_rate_limit(f"email:{normalized_email}", settings.join_rate_per_email)
+    await check_rate_limit_db(f"ip:{ip}", settings.join_rate_per_ip)
+    await check_rate_limit_db(f"email:{normalized_email}", settings.join_rate_per_email)
 
     qm = request.app.state.queue_manager
     try:
@@ -319,7 +319,7 @@ async def queue_list(request: Request):
 async def game_history(request: Request):
     """Recent game results — shows the last completed turns."""
     qm = request.app.state.queue_manager
-    results = await qm.get_recent_results(limit=20)
+    results = await qm.get_recent_results(limit=settings.history_limit)
     return HistoryResponse(
         entries=[
             HistoryEntry(
@@ -344,7 +344,7 @@ async def _get_health_http():
     global _health_http
     if _health_http is None:
         import httpx
-        _health_http = httpx.AsyncClient(timeout=2)
+        _health_http = httpx.AsyncClient(timeout=settings.health_check_timeout_s)
     return _health_http
 
 

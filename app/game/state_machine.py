@@ -107,7 +107,7 @@ class StateMachine:
                     except Exception:
                         pass
 
-                    if age_seconds > 30:
+                    if age_seconds > self.settings.ghost_player_age_s:
                         logger.info(
                             "Skipping disconnected player %s (%s, queued %.0fs ago)",
                             next_entry["id"], next_entry["name"], age_seconds,
@@ -338,7 +338,7 @@ class StateMachine:
 
         if self.settings.coin_each_try:
             await self.gpio.pulse("coin")
-            await asyncio.sleep(0.5)  # Let machine register credit
+            await asyncio.sleep(self.settings.coin_post_pulse_delay_s)  # Let machine register credit
 
         await self._enter_state(TurnState.MOVING)
 
@@ -386,7 +386,7 @@ class StateMachine:
         # _gpio_call() and auto-recovers the executor if lgpio blocks.
         # The outer wait_for is pure defense-in-depth (generous 10 s).
         try:
-            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
+            await asyncio.wait_for(self.gpio.emergency_stop(), timeout=self.settings.emergency_stop_timeout_s)
         except (asyncio.TimeoutError, Exception):
             logger.exception("GPIO emergency_stop outer timeout — continuing cleanup")
         # ALWAYS unlock GPIO.  This is the critical line that prevents
@@ -562,7 +562,7 @@ class StateMachine:
                     self._turn_timer.cancel()
                 self.gpio.unregister_win_callback()
                 try:
-                    await asyncio.wait_for(self.gpio.emergency_stop(), timeout=10.0)
+                    await asyncio.wait_for(self.gpio.emergency_stop(), timeout=self.settings.emergency_stop_timeout_s)
                 except (asyncio.TimeoutError, Exception):
                     logger.exception("GPIO emergency_stop failed during force recovery")
                 # ALWAYS unlock GPIO regardless of what happened above

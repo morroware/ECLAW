@@ -30,22 +30,22 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-async def _periodic_db_prune(interval_seconds: int = 3600):
+async def _periodic_db_prune():
     """Background task that prunes old DB entries and rate limit records."""
     while True:
-        await asyncio.sleep(interval_seconds)
+        await asyncio.sleep(settings.db_prune_interval_s)
         try:
             await prune_old_entries(settings.db_retention_hours)
         except Exception:
             logger.exception("Periodic DB prune failed")
         try:
             from app.api.routes import prune_rate_limits
-            await prune_rate_limits(3600)
+            await prune_rate_limits(settings.rate_limit_prune_age_s)
         except Exception:
             logger.exception("Periodic rate limit prune failed")
 
 
-async def _periodic_queue_check(sm, interval_seconds: int = 10):
+async def _periodic_queue_check(sm, interval_seconds: int | None = None):
     """Safety net: periodically check if the state machine is IDLE with
     waiting players and kick-start the queue if so.  Also detects stuck
     states where the active entry was cancelled/completed externally,
@@ -58,6 +58,9 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
     from app.game.state_machine import TurnState
     import time as _time
 
+    if interval_seconds is None:
+        interval_seconds = settings.queue_check_interval_s
+
     # Hard maximum time a non-IDLE state can persist before forced recovery.
     # This catches any edge case where timers are silently lost (GC, task
     # cancellation, unhandled exception).  The budget is generous to avoid
@@ -66,7 +69,7 @@ async def _periodic_queue_check(sm, interval_seconds: int = 10):
         settings.turn_time_seconds + settings.ready_prompt_seconds + 60
     )
     # TURN_END should never last more than a few seconds (GPIO cleanup).
-    max_turn_end_seconds = 30
+    max_turn_end_seconds = settings.turn_end_stuck_timeout_s
 
     while True:
         await asyncio.sleep(interval_seconds)
@@ -241,7 +244,7 @@ async def ws_status(ws: WebSocket):
         behind corporate NATs or CDN edge nodes)."""
         try:
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(settings.status_keepalive_interval_s)
                 await ws.send_text('{"type":"ping"}')
         except Exception:
             pass

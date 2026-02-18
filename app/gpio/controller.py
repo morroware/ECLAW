@@ -29,12 +29,6 @@ from app.config import settings
 
 logger = logging.getLogger("gpio")
 
-# Timeouts for executor calls.  These must be generous enough for normal
-# operations but short enough that a stuck thread is detected quickly.
-_GPIO_OP_TIMEOUT = 2.0      # simple on/off/read
-_GPIO_PULSE_TIMEOUT = 5.0   # pulse includes time.sleep() in the thread
-_GPIO_INIT_TIMEOUT = 10.0   # device initialisation / teardown
-
 OPPOSING = {
     "north": "south",
     "south": "north",
@@ -89,7 +83,7 @@ class GPIOController:
 
     # -- Executor helper -----------------------------------------------------
 
-    async def _gpio_call(self, func, *args, timeout: float = _GPIO_OP_TIMEOUT) -> bool:
+    async def _gpio_call(self, func, *args, timeout: float = None) -> bool:
         """Run a synchronous GPIO function in the executor with a timeout.
 
         Returns ``True`` on success, ``False`` on timeout or error.
@@ -98,6 +92,8 @@ class GPIOController:
         syscall) and is replaced with a fresh one so subsequent calls are
         not permanently blocked.
         """
+        if timeout is None:
+            timeout = settings.gpio_op_timeout_s
         try:
             loop = asyncio.get_running_loop()
             await asyncio.wait_for(
@@ -140,7 +136,7 @@ class GPIOController:
 
     async def initialize(self):
         """Call once at server startup."""
-        if not await self._gpio_call(self._init_devices, timeout=_GPIO_INIT_TIMEOUT):
+        if not await self._gpio_call(self._init_devices, timeout=settings.gpio_init_timeout_s):
             logger.error("GPIO initialisation failed — hardware may not work")
         self._initialized = True
         logger.info("GPIO controller initialized (mock=%s)", settings.mock_gpio)
@@ -178,7 +174,7 @@ class GPIOController:
     async def cleanup(self):
         """Call on server shutdown. Forces all OFF, closes devices."""
         await self.emergency_stop()
-        await self._gpio_call(self._close_devices, timeout=_GPIO_INIT_TIMEOUT)
+        await self._gpio_call(self._close_devices, timeout=settings.gpio_init_timeout_s)
         logger.info("GPIO controller cleaned up")
 
     def _close_devices(self):
@@ -310,7 +306,7 @@ class GPIOController:
         self._last_pulse[name] = now
 
         if not await self._gpio_call(self._do_pulse, name, duration_ms,
-                                     timeout=_GPIO_PULSE_TIMEOUT):
+                                     timeout=settings.gpio_pulse_timeout_s):
             return False
         logger.info(f"Pulse {name}: {duration_ms}ms")
         return True
