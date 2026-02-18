@@ -16,10 +16,10 @@
   /* Core palette — deep space arcade */
   --bg:             #0a0a0f;
   --bg-subtle:      #0e0e18;
-  --surface:        rgba(16, 14, 32, 0.88);
+  --surface:        rgba(16, 14, 32, 0.72);
   --surface-solid:  #100e20;
-  --surface-2:      rgba(24, 20, 50, 0.92);
-  --surface-3:      rgba(36, 30, 70, 0.9);
+  --surface-2:      rgba(24, 20, 50, 0.80);
+  --surface-3:      rgba(36, 30, 70, 0.75);
   --glass:          rgba(12, 10, 28, 0.75);
   --glass-border:   rgba(255, 255, 255, 0.08);
 
@@ -513,12 +513,12 @@ input, textarea {
 .overlay-panel {
   position: absolute;
   z-index: 10;
-  width: 88%;
-  max-width: 360px;
+  width: 84%;
+  max-width: 340px;
   padding: 20px;
   background: var(--surface);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -543,7 +543,7 @@ input, textarea {
 .card {
   position: relative; /* redundant with overlay-panel but explicit */
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px var(--glass-border);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .card-glow {
@@ -1469,6 +1469,13 @@ button:hover .btn-shine {
     display: none !important;
   }
 
+  /* More translucent panels on mobile so video feed is visible */
+  .overlay-panel {
+    background: rgba(16, 14, 32, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
   /* Bigger touch targets for mobile */
   #dpad {
     grid-template-columns: 56px 56px 56px;
@@ -1494,7 +1501,8 @@ button:hover .btn-shine {
   .brand-sub { display: none; }
 
   .overlay-panel {
-    width: 94%;
+    width: 90%;
+    max-width: 300px;
     padding: 16px 14px;
   }
 
