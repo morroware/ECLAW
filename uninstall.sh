@@ -135,6 +135,8 @@ uninstall_pi() {
             ok "Disabled $svc"
         fi
     done
+    # Clear failure state / start-limit counters for a clean slate
+    sudo systemctl reset-failed claw-watchdog claw-server mediamtx 2>/dev/null || true
 
     # [2/5] Remove systemd service files
     echo ""

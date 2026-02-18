@@ -10,14 +10,14 @@
 
 logLevel: warn
 
-webrtc:
-  address: 127.0.0.1:8889
-  iceServers:
-    - url: stun:stun.l.google.com:19302
-    - url: stun:stun1.l.google.com:19302
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
 
-rtsp:
-  address: 127.0.0.1:8554
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  - url: stun:stun1.l.google.com:19302
 
 paths:
   cam:
