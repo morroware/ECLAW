@@ -1,7 +1,8 @@
 /**
  * ECLAW App — Main UI orchestration for The Castle Fun Center.
  * Manages application state, connects components, handles UI transitions,
- * sound effects, visual feedback, and confetti celebrations.
+ * sound effects, visual feedback, confetti celebrations, screen effects,
+ * current player HUD, and auto-refresh on timeout.
  */
 (function () {
   "use strict";
@@ -53,6 +54,9 @@
   const timerBar = $("#timer-bar");
   const streamContainer = $("#stream-container");
   const dropBtn = $("#drop-btn");
+  const screenFlash = $("#screen-flash");
+  const currentPlayerHud = $("#current-player-hud");
+  const playerHudName = $("#player-hud-name");
 
   // -- Sound Toggle ---------------------------------------------------------
   function updateSoundIcon() {
@@ -124,6 +128,10 @@
         currentPlayerDisplay.textContent = msg.current_player
           ? `Playing: ${msg.current_player}`
           : "";
+
+        // Update the current player HUD on video
+        updateCurrentPlayerHud(msg.current_player);
+
         if (msg.viewer_count != null) {
           viewerCount.textContent = `${msg.viewer_count} viewer${msg.viewer_count !== 1 ? "s" : ""}`;
         }
@@ -170,6 +178,19 @@
     statusWs.onerror = () => {
       // onclose will fire after this
     };
+  }
+
+  // -- Current Player HUD (visible to all spectators) -----------------------
+
+  function updateCurrentPlayerHud(name) {
+    if (!currentPlayerHud || !playerHudName) return;
+
+    if (name) {
+      playerHudName.textContent = name;
+      currentPlayerHud.classList.remove("hidden");
+    } else {
+      currentPlayerHud.classList.add("hidden");
+    }
   }
 
   // -- Video Stream ---------------------------------------------------------
@@ -220,6 +241,7 @@
         queueLength.textContent = `Queue: ${data.total}`;
         if (data.current_player) {
           currentPlayerDisplay.textContent = `Playing: ${data.current_player}`;
+          updateCurrentPlayerHud(data.current_player);
         }
       }
     } catch (e) {
@@ -656,6 +678,8 @@
       if (left <= 0) {
         clearInterval(readyTimerInterval);
         el.textContent = "Time's up!";
+        // Auto-refresh: player didn't press Ready in time
+        autoRefreshOnTimeout();
       } else {
         el.textContent = `${left}s`;
       }
@@ -663,6 +687,17 @@
 
     tick();
     readyTimerInterval = setInterval(tick, 250);
+  }
+
+  // -- Auto-Refresh on Timeout ----------------------------------------------
+
+  function autoRefreshOnTimeout() {
+    // Clean up the session since the player timed out
+    cleanup();
+    // Brief delay so the user sees "Time's up!" before reload
+    setTimeout(() => {
+      location.reload();
+    }, 2000);
   }
 
   // -- UI State Switching ---------------------------------------------------
@@ -682,6 +717,9 @@
     timerDisplay.textContent = "";
     updateTimerBar(0);
     if (streamContainer) streamContainer.classList.remove("playing");
+
+    // Reset result panel classes
+    resultPanel.classList.remove("result-win", "result-loss");
 
     switch (newState) {
       case null:
@@ -733,20 +771,48 @@
           const result = data.result || "unknown";
           const title = $("#result-title");
           const message = $("#result-message");
+          const icon = $("#result-icon");
+          const glow = $("#result-glow");
+
+          // Reset classes
+          icon.className = "result-icon";
+          glow.className = "card-glow";
 
           if (result === "win") {
+            icon.textContent = "\u{1F3C6}";
+            icon.classList.add("win-icon");
             title.textContent = "YOU WON!";
             title.className = "win";
+            glow.classList.add("win-glow");
+            resultPanel.classList.add("result-win");
             message.textContent = "Congratulations! You grabbed a prize!";
             sfx.playWin();
             vibrate([100, 50, 100, 50, 200]);
+            triggerScreenFlash("win");
             spawnConfetti();
+            // Second burst of confetti after a short delay
+            setTimeout(() => spawnConfetti(), 800);
           } else if (result === "loss") {
+            icon.textContent = "\u{1F61E}";
+            icon.classList.add("loss-icon");
             title.textContent = "No Luck";
             title.className = "loss";
+            glow.classList.add("loss-glow");
+            resultPanel.classList.add("result-loss");
             message.textContent = "Better luck next time!";
             sfx.playLoss();
+            triggerScreenFlash("loss");
+          } else if (result === "expired") {
+            icon.textContent = "\u{231B}";
+            icon.classList.add("loss-icon");
+            title.textContent = "Time's Up";
+            title.className = "loss";
+            glow.classList.add("loss-glow");
+            resultPanel.classList.add("result-loss");
+            message.textContent = "Your turn has ended.";
+            sfx.playLoss();
           } else {
+            icon.textContent = "\u{1F3AE}";
             title.textContent = "Turn Over";
             title.className = "";
             message.textContent = `Result: ${result}`;
@@ -759,31 +825,56 @@
     }
   }
 
-  // -- Confetti Effect ------------------------------------------------------
+  // -- Screen Flash Effect --------------------------------------------------
+
+  function triggerScreenFlash(type) {
+    if (!screenFlash) return;
+    // Remove any existing classes
+    screenFlash.className = "";
+    // Force reflow to restart animation
+    void screenFlash.offsetWidth;
+    screenFlash.classList.add(type === "win" ? "flash-win" : "flash-loss");
+    // Clean up after animation
+    setTimeout(() => {
+      screenFlash.className = "";
+    }, 1000);
+  }
+
+  // -- Enhanced Confetti Effect ---------------------------------------------
 
   function spawnConfetti() {
     const container = $("#confetti-container");
     if (!container) return;
-    const colors = ["#f59e0b", "#7c3aed", "#10b981", "#ef4444", "#3b82f6", "#ec4899"];
-    const count = 40;
+
+    const colors = [
+      "#f59e0b", "#7c3aed", "#10b981", "#ef4444",
+      "#3b82f6", "#ec4899", "#06b6d4", "#f97316",
+      "#fbbf24", "#a78bfa",
+    ];
+    const shapes = ["confetti-rect", "confetti-circle", "confetti-strip", "confetti-star"];
+    const animations = ["confettiFall", "confettiSway"];
+    const count = 60;
 
     for (let i = 0; i < count; i++) {
       const piece = document.createElement("div");
-      piece.className = "confetti-piece";
+      const shape = shapes[Math.floor(Math.random() * shapes.length)];
+      const anim = animations[Math.floor(Math.random() * animations.length)];
+
+      piece.className = `confetti-piece ${shape}`;
       piece.style.left = Math.random() * 100 + "%";
       piece.style.background = colors[Math.floor(Math.random() * colors.length)];
-      piece.style.animationDelay = (Math.random() * 1.2) + "s";
-      piece.style.animationDuration = (1.5 + Math.random() * 1.5) + "s";
-      piece.style.width = (5 + Math.random() * 6) + "px";
-      piece.style.height = (5 + Math.random() * 6) + "px";
-      piece.style.borderRadius = Math.random() > 0.5 ? "50%" : "0";
+      piece.style.animationName = anim;
+      piece.style.animationDelay = (Math.random() * 1.5) + "s";
+      piece.style.animationDuration = (2 + Math.random() * 2) + "s";
+      piece.style.opacity = (0.7 + Math.random() * 0.3).toFixed(2);
+
       container.appendChild(piece);
     }
 
     // Clean up after animation
     setTimeout(() => {
       container.innerHTML = "";
-    }, 4000);
+    }, 5000);
   }
 
   // -- Haptic Feedback ------------------------------------------------------

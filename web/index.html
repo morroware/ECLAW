@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="Play the remote claw machine live at The Castle Fun Center! Control the claw from anywhere and win real prizes.">
   <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>The Castle Fun Center — Remote Claw Machine</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,6 +53,12 @@
             <div id="try-display"></div>
             <div id="timer-display"></div>
           </div>
+        </div>
+
+        <!-- Current Player Banner — visible to all spectators on the video -->
+        <div id="current-player-hud" class="hidden">
+          <span class="player-hud-icon">&#127918;</span>
+          <span id="player-hud-name"></span>
         </div>
 
         <!-- Timer bar across bottom of video -->
@@ -112,9 +120,10 @@
         <div id="ready-timer"></div>
       </div>
 
-      <!-- Turn Result -->
+      <!-- Turn Result — Enhanced with dramatic effects -->
       <div id="result-panel" class="overlay-panel card hidden">
-        <div class="card-glow"></div>
+        <div class="card-glow" id="result-glow"></div>
+        <div id="result-icon" class="result-icon"></div>
         <h2 id="result-title"></h2>
         <p id="result-message"></p>
         <button id="play-again-btn">
@@ -183,6 +192,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Screen flash overlay for dramatic effects -->
+  <div id="screen-flash" aria-hidden="true"></div>
 
   <!-- Confetti overlay for wins -->
   <div id="confetti-container"></div>
