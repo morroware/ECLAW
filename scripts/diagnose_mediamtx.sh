@@ -74,23 +74,28 @@ if [ -f /etc/mediamtx.yml ]; then
 
     # Validate YAML syntax (basic check)
     if command -v python3 &>/dev/null; then
-        if python3 -c "
-import yaml, sys
+        YAML_RESULT=$(python3 -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    print('skip')
+    sys.exit(0)
 try:
     with open('/etc/mediamtx.yml') as f:
         yaml.safe_load(f)
-    sys.exit(0)
+    print('ok')
 except yaml.YAMLError as e:
-    print(f'  YAML error: {e}', file=sys.stderr)
-    sys.exit(1)
-except ImportError:
-    sys.exit(0)  # pyyaml not installed, skip
-" 2>/dev/null; then
-            pass "Config YAML syntax: valid"
-        else
-            fail "Config YAML syntax: INVALID"
-            hint "Fix: check /etc/mediamtx.yml for syntax errors"
-        fi
+    print('fail')
+    print(str(e), file=sys.stderr)
+" 2>/dev/null || echo "skip")
+
+        case "$YAML_RESULT" in
+            ok*)   pass "Config YAML syntax: valid" ;;
+            skip*) info "YAML validation skipped (pyyaml not installed)" ;;
+            fail*) warn "Config YAML syntax may have issues (MediaMTX may still accept it)"
+                   hint "Install pyyaml for detailed validation: pip3 install pyyaml" ;;
+        esac
     fi
 else
     fail "Config not found at /etc/mediamtx.yml"
@@ -234,10 +239,12 @@ echo -e "${BOLD}6. Port Availability${NC}"
 check_port() {
     local port=$1
     local name=$2
+
+    # Use sudo for ss/netstat so we can see process names for all users
     if command -v ss &>/dev/null; then
-        LISTENER=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -v "State" || true)
+        LISTENER=$(sudo ss -tlnp "sport = :$port" 2>/dev/null | grep -v "State" || true)
     elif command -v netstat &>/dev/null; then
-        LISTENER=$(netstat -tlnp 2>/dev/null | grep ":$port " || true)
+        LISTENER=$(sudo netstat -tlnp 2>/dev/null | grep ":$port " || true)
     else
         info "Neither ss nor netstat available, skipping port check for $port"
         return
@@ -252,8 +259,12 @@ check_port() {
     else
         if echo "$LISTENER" | grep -q mediamtx; then
             pass "Port $port ($name) is in use by mediamtx"
+        elif systemctl is-active --quiet mediamtx 2>/dev/null; then
+            # Service is running and port is in use — likely mediamtx but
+            # process name not visible (can happen with older ss versions)
+            pass "Port $port ($name) is in use (mediamtx service is active)"
         else
-            fail "Port $port ($name) is in use by ANOTHER process"
+            fail "Port $port ($name) is in use by another process"
             info "  $LISTENER"
             hint "Kill the conflicting process or change the port in /etc/mediamtx.yml"
         fi
@@ -325,30 +336,60 @@ if curl -sf "$HEALTH_URL" -o /tmp/mtx_health.json --max-time 3 2>/dev/null; then
     pass "MediaMTX API responding at $HEALTH_URL"
 
     if command -v python3 &>/dev/null; then
-        python3 -c "
-import json
-with open('/tmp/mtx_health.json') as f:
-    data = json.load(f)
-items = data.get('items') or data.get('paths') or []
-if items:
-    for item in items:
-        name = item.get('name', 'unknown')
-        ready = item.get('ready', item.get('sourceReady', False))
-        source_type = item.get('source', {}).get('type', 'unknown') if isinstance(item.get('source'), dict) else item.get('sourceType', 'unknown')
-        status = 'ready' if ready else 'NOT ready'
-        print(f'  Stream: /{name}  status={status}  source={source_type}')
-else:
-    print('  No active streams found')
-" 2>/dev/null || info "Could not parse MediaMTX API response"
+        STREAM_INFO=$(python3 -c "
+import json, sys
+try:
+    with open('/tmp/mtx_health.json') as f:
+        data = json.load(f)
+    # v3 API: {'items': [{'name': 'cam', 'ready': true, ...}]}
+    # v2 API: {'paths': {'cam': {'sourceReady': true, ...}}}
+    items = data.get('items') or []
+    paths = data.get('paths') or {}
+    if items:
+        for item in items:
+            name = item.get('name', 'unknown')
+            ready = item.get('ready', item.get('sourceReady', False))
+            src = item.get('source', None)
+            src_type = src.get('type', 'unknown') if isinstance(src, dict) else str(src or 'unknown')
+            status = 'ready' if ready else 'NOT ready'
+            print(f'/{name}  status={status}  source={src_type}')
+    elif paths:
+        for name, pdata in paths.items():
+            ready = pdata.get('sourceReady', pdata.get('ready', False))
+            status = 'ready' if ready else 'NOT ready'
+            print(f'/{name}  status={status}')
+    else:
+        print('(none)')
+except Exception as e:
+    print(f'(parse error: {e})', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null)
+
+        if [ -n "$STREAM_INFO" ] && [ "$STREAM_INFO" != "(none)" ]; then
+            echo "$STREAM_INFO" | while IFS= read -r line; do
+                info "Stream: $line"
+            done
+        else
+            info "No active streams found (ffmpeg may still be starting)"
+        fi
     fi
 
-    # Quick WHEP check
-    if curl -sf "http://127.0.0.1:8889/cam/whep" -X POST \
-         -H "Content-Type: application/sdp" \
-         -d "v=0" -o /dev/null --max-time 3 2>/dev/null; then
+    # Quick WHEP availability check (GET returns 404 if path doesn't exist, 400 if it does)
+    WHEP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://127.0.0.1:8889/cam/whep" -X POST \
+        -H "Content-Type: application/sdp" \
+        -d "v=0" --max-time 3 2>/dev/null || echo "000")
+
+    if [ "$WHEP_STATUS" = "201" ]; then
         pass "WHEP endpoint responding for /cam"
+    elif [ "$WHEP_STATUS" = "400" ] || [ "$WHEP_STATUS" = "401" ]; then
+        # 400 = bad SDP (expected with our dummy payload), means endpoint exists
+        pass "WHEP endpoint exists for /cam (HTTP $WHEP_STATUS)"
+    elif [ "$WHEP_STATUS" = "404" ]; then
+        warn "WHEP path /cam not found (stream may not be published yet)"
+        hint "Check: sudo journalctl -u mediamtx -f"
     else
-        warn "WHEP endpoint not responding (stream may not be ready)"
+        warn "WHEP endpoint returned HTTP $WHEP_STATUS (stream may not be ready)"
     fi
 else
     fail "MediaMTX API not responding at $HEALTH_URL"
