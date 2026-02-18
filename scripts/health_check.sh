@@ -74,6 +74,7 @@ print(f\"uptime_seconds={h.get('uptime_seconds','unknown')}\")
         pass "Camera stream: available"
     else
         warn "Camera stream: not available (MediaMTX may not be running)"
+        echo -e "        ${YELLOW}->  Run ./scripts/diagnose_mediamtx.sh for detailed diagnostics${NC}"
     fi
 
     pass "Queue length: $queue_length"
@@ -167,6 +168,17 @@ if command -v systemctl &>/dev/null; then
             pass "$svc: active"
         elif systemctl is-enabled --quiet "$svc" 2>/dev/null; then
             warn "$svc: enabled but not running"
+            if [ "$svc" = "mediamtx" ]; then
+                # Show last few log lines to help diagnose
+                RECENT_LOG=$(journalctl -u mediamtx --no-pager -n 3 --no-hostname 2>/dev/null || true)
+                if [ -n "$RECENT_LOG" ]; then
+                    echo -e "        ${YELLOW}Recent logs:${NC}"
+                    echo "$RECENT_LOG" | while IFS= read -r line; do
+                        echo -e "        ${YELLOW}|${NC} $line"
+                    done
+                fi
+                echo -e "        ${YELLOW}->  Run ./scripts/diagnose_mediamtx.sh for detailed diagnostics${NC}"
+            fi
         else
             warn "$svc: not configured (OK for dev mode)"
         fi

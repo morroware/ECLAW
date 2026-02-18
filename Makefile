@@ -1,7 +1,7 @@
 # ECLAW — Common development and operations commands
 # Run 'make help' to see available targets
 
-.PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check audit-internet
+.PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check audit-internet diagnose-stream
 
 VENV     := venv/bin
 PYTHON   := $(VENV)/python
@@ -88,6 +88,9 @@ logs-all: ## Tail all ECLAW service logs
 
 deploy-check: ## Verify production deployment health
 	@bash scripts/health_check.sh http://localhost:$(PORT)
+
+diagnose-stream: ## Diagnose MediaMTX streaming issues
+	@bash scripts/diagnose_mediamtx.sh
 
 restart: ## Restart all ECLAW services (systemd)
 	sudo systemctl restart claw-server claw-watchdog mediamtx
