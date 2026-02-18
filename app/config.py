@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # Stream
     mediamtx_health_url: str = "http://127.0.0.1:8889/v3/paths/list"
     camera_device: int = 0  # /dev/videoN index for built-in MJPEG fallback
+    camera_rtsp_url: str = "rtsp://127.0.0.1:8554/cam"  # RTSP fallback when device is locked by MediaMTX
 
     # Mock mode: set to true when running without real GPIO hardware
     mock_gpio: bool = False

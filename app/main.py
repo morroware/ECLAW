@@ -158,8 +158,9 @@ async def lifespan(app: FastAPI):
     await gpio.initialize()
     app.state.gpio_controller = gpio
 
-    # Init built-in camera (MJPEG fallback when MediaMTX is not running)
-    camera = Camera(device=settings.camera_device)
+    # Init built-in camera (MJPEG fallback when WebRTC video fails on mobile).
+    # Tries direct device first; falls back to MediaMTX RTSP if device is locked.
+    camera = Camera(device=settings.camera_device, rtsp_url=settings.camera_rtsp_url)
     if camera.start():
         app.state.camera = camera
     else:
