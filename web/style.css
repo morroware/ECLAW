@@ -1532,7 +1532,7 @@ button:hover .btn-shine {
   .player-hud-icon { font-size: 0.75rem; }
 }
 
-/* Wider desktop — slightly larger D-pad */
+/* Wider desktop — slightly larger D-pad, glass overlays, full-height video */
 @media (min-width: 768px) {
   #dpad {
     grid-template-columns: 58px 58px 58px;
@@ -1550,13 +1550,34 @@ button:hover .btn-shine {
     padding: 12px 24px calc(16px + var(--safe-bottom));
   }
 
+  /* Glass effect on overlay panels — safe on desktop browsers;
+     only mobile WebKit has the compositing bug with backdrop-filter */
   .overlay-panel {
     max-width: 400px;
     padding: 28px;
+    background: rgba(16, 14, 32, 0.72);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
   }
 
-  #history-list {
-    max-height: 100px;
+  /* On desktop, float queue over the video bottom instead of
+     consuming vertical space below it. The video gets full height. */
+  #queue-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: rgba(10, 10, 15, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: none;
+    border-top: 1px solid var(--glass-border);
+  }
+
+  /* History is secondary — hide on desktop to maximize video area */
+  #history-panel {
+    display: none;
   }
 }
 
