@@ -4,19 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Play the remote claw machine live at The Castle Fun Center! Control the claw from anywhere and win real prizes.">
-  <meta name="theme-color" content="#0c0a1a">
+  <meta name="theme-color" content="#0a0a0f">
   <title>The Castle Fun Center — Remote Claw Machine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Orbitron:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Animated background particles -->
+  <div id="bg-particles" aria-hidden="true"></div>
+
   <div id="app">
-    <!-- Header -->
-    <header id="header">
+    <!-- Compact Top Bar -->
+    <header id="top-bar">
       <div class="brand">
         <span class="brand-icon" aria-hidden="true">&#127984;</span>
         <div class="brand-text">
-          <span class="brand-name">The Castle Fun Center</span>
-          <span class="brand-sub">Remote Claw Machine</span>
+          <span class="brand-name">THE CASTLE</span>
+          <span class="brand-sub">CLAW MACHINE</span>
         </div>
       </div>
       <div id="header-right">
@@ -29,71 +35,90 @@
       </div>
     </header>
 
-    <!-- Game Area: Video + Controls side-by-side on desktop -->
-    <div id="game-area">
-      <!-- Video Stream -->
+    <!-- ===== HERO: Video Stage ===== -->
+    <div id="stage">
       <div id="stream-container">
-        <div id="live-badge">LIVE</div>
         <video id="stream-video" autoplay playsinline muted></video>
-        <div id="stream-overlay">
-          <div>
-            <div id="game-state-display"></div>
-            <div id="try-display"></div>
-          </div>
-          <div id="timer-display"></div>
-        </div>
-      </div>
 
-      <!-- Controls (shown when actively playing) -->
-      <div id="controls-panel" class="panel hidden">
+        <!-- HUD Overlays -->
+        <div id="hud-top">
+          <div id="hud-top-left">
+            <div id="live-badge"><span class="live-dot"></span>LIVE</div>
+            <div id="game-state-display"></div>
+          </div>
+          <div id="hud-top-right">
+            <div id="try-display"></div>
+            <div id="timer-display"></div>
+          </div>
+        </div>
+
+        <!-- Timer bar across bottom of video -->
+        <div id="timer-bar-container"><div id="timer-bar"></div></div>
+      </div>
+    </div>
+
+    <!-- ===== Game Controls HUD (shown when playing) ===== -->
+    <div id="controls-panel" class="panel hidden">
       <div id="controls-info">
         <span id="ctrl-try">Try 1/2</span>
         <span id="ctrl-timer">30s</span>
       </div>
-      <div id="timer-bar-container"><div id="timer-bar"></div></div>
 
       <!-- Desktop: Visual D-Pad + Keyboard hints -->
       <div id="desktop-controls" class="desktop-only">
         <div id="visual-dpad">
           <div class="vdpad-btn vdpad-up" data-dir="north">
-            &#9650;
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             <span class="key-label">W</span>
           </div>
           <div class="vdpad-btn vdpad-left" data-dir="west">
-            &#9664;
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             <span class="key-label">A</span>
           </div>
-          <div class="vdpad-center">MOVE</div>
+          <div class="vdpad-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+          </div>
           <div class="vdpad-btn vdpad-right" data-dir="east">
-            &#9654;
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             <span class="key-label">D</span>
           </div>
           <div class="vdpad-btn vdpad-down" data-dir="south">
-            &#9660;
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
             <span class="key-label">S</span>
           </div>
         </div>
         <button id="drop-btn-desktop" class="drop-btn" tabindex="-1">
+          <span class="drop-btn-icon">&#9660;</span>
           DROP
-          <span class="key-hint">Spacebar</span>
+          <span class="key-hint">SPACE</span>
         </button>
       </div>
 
       <!-- Mobile: Touch D-Pad -->
       <div id="dpad-container" class="mobile-only">
         <div id="dpad">
-          <div class="dpad-btn dpad-up" data-dir="north">&#9650;</div>
-          <div class="dpad-btn dpad-left" data-dir="west">&#9664;</div>
+          <div class="dpad-btn dpad-up" data-dir="north">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </div>
+          <div class="dpad-btn dpad-left" data-dir="west">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </div>
           <div class="dpad-btn dpad-center"></div>
-          <div class="dpad-btn dpad-right" data-dir="east">&#9654;</div>
-          <div class="dpad-btn dpad-down" data-dir="south">&#9660;</div>
+          <div class="dpad-btn dpad-right" data-dir="east">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+          <div class="dpad-btn dpad-down" data-dir="south">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </div>
         </div>
-        <button id="drop-btn-mobile" class="big-btn drop-btn" tabindex="-1">DROP</button>
+        <button id="drop-btn-mobile" class="drop-btn" tabindex="-1">
+          <span class="drop-btn-icon">&#9660;</span>
+          DROP
+        </button>
       </div>
     </div><!-- /controls-panel -->
-    </div><!-- /game-area -->
 
-    <!-- Queue Info Bar + Live Queue List -->
+    <!-- ===== Queue Info Ticker ===== -->
     <div id="queue-panel">
       <div id="queue-info">
         <span id="queue-length">Queue: 0</span>
@@ -104,41 +129,71 @@
       </div>
     </div>
 
-    <!-- Join Form (shown when not in queue) -->
-    <div id="join-panel" class="panel">
-      <h2>Join the Queue</h2>
+    <!-- ===== Join Form ===== -->
+    <div id="join-panel" class="panel card">
+      <div class="card-glow"></div>
+      <h2>Join the Game</h2>
+      <p class="card-subtitle">Enter your name to get in line and play!</p>
       <form id="join-form">
         <input type="text" id="join-name" placeholder="Your name" required minlength="2" maxlength="50" autocomplete="given-name">
         <input type="email" id="join-email" placeholder="Email address" required autocomplete="email">
-        <button type="submit" id="join-btn">Join Queue</button>
+        <button type="submit" id="join-btn">
+          <span class="btn-text">JOIN QUEUE</span>
+          <span class="btn-shine"></span>
+        </button>
       </form>
       <p id="join-error" class="error"></p>
     </div>
 
-    <!-- Waiting Panel (shown when in queue, waiting) -->
-    <div id="waiting-panel" class="panel hidden">
-      <h2>You're in the Queue!</h2>
-      <p>Position: <strong id="wait-position">--</strong></p>
-      <p>Estimated wait: <strong id="wait-time">--</strong></p>
+    <!-- ===== Waiting Panel ===== -->
+    <div id="waiting-panel" class="panel card hidden">
+      <div class="card-glow"></div>
+      <div class="waiting-animation">
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring delay"></div>
+        <span class="waiting-icon">&#127918;</span>
+      </div>
+      <h2>You're In Line!</h2>
+      <div class="waiting-stats">
+        <div class="stat">
+          <span class="stat-label">Position</span>
+          <span class="stat-value" id="wait-position">--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Est. Wait</span>
+          <span class="stat-value" id="wait-time">--</span>
+        </div>
+      </div>
       <button id="leave-btn">Leave Queue</button>
     </div>
 
-    <!-- Ready Prompt (shown when it's your turn) -->
-    <div id="ready-panel" class="panel hidden">
-      <h2>It's Your Turn!</h2>
-      <p>Press Ready to start playing</p>
-      <button id="ready-btn" class="big-btn">READY</button>
+    <!-- ===== Ready Prompt ===== -->
+    <div id="ready-panel" class="panel card hidden">
+      <div class="card-glow ready-glow"></div>
+      <div class="ready-alert">
+        <span class="ready-icon">&#127775;</span>
+        <h2>IT'S YOUR TURN!</h2>
+      </div>
+      <p class="ready-subtitle">Get ready to control the claw</p>
+      <button id="ready-btn" class="big-btn ready-btn-pulse">
+        <span class="btn-text">READY</span>
+        <span class="btn-shine"></span>
+      </button>
       <div id="ready-timer"></div>
     </div>
 
-    <!-- Turn End Panel -->
-    <div id="result-panel" class="panel hidden">
+    <!-- ===== Turn Result ===== -->
+    <div id="result-panel" class="panel card hidden">
+      <div class="card-glow"></div>
       <h2 id="result-title"></h2>
       <p id="result-message"></p>
-      <button id="play-again-btn">Play Again</button>
+      <button id="play-again-btn">
+        <span class="btn-text">PLAY AGAIN</span>
+        <span class="btn-shine"></span>
+      </button>
     </div>
 
-    <!-- Recent Game History -->
+    <!-- ===== Recent Game History ===== -->
     <div id="history-panel" class="panel">
       <h2>Recent Games</h2>
       <div id="history-list">
