@@ -1,7 +1,9 @@
 /**
- * WebRTC Stream Player — connects to MediaMTX via WHEP protocol,
- * with MJPEG fallback when MediaMTX is not running or when WebRTC
- * video fails to decode (e.g. unsupported codec on mobile).
+ * WebRTC Stream Player — connects to MediaMTX via WHEP protocol.
+ *
+ * Designed for reliable internet delivery to dozens of concurrent viewers.
+ * Reconnects automatically with exponential backoff on any failure.
+ * Debug overlay available via ?debug query parameter.
  */
 class StreamPlayer {
   constructor(videoElement, streamBaseUrl) {
@@ -10,13 +12,13 @@ class StreamPlayer {
     this.pc = null;
     this.sessionUrl = null;
     this._reconnecting = false;
-    this._mjpegImg = null;
-    this._statusEl = null;
+    this._backoff = 1000;
     this._frameCheckTimer = null;
-    this._createStatusOverlay();
+    this._statusEl = null;
+    this._debug = new URLSearchParams(location.search).has("debug");
+    if (this._debug) this._createStatusOverlay();
   }
 
-  /** Temporary diagnostic overlay — shows stream status on-screen. */
   _createStatusOverlay() {
     const el = document.createElement("div");
     el.id = "stream-debug";
@@ -27,102 +29,100 @@ class StreamPlayer {
       "max-width:90%;word-break:break-all;";
     this.video.parentNode.appendChild(el);
     this._statusEl = el;
-    this._setStatus("init");
   }
 
-  _setStatus(msg) {
-    if (this._statusEl) this._statusEl.textContent = "stream: " + msg;
+  _log(msg) {
     console.log("[stream]", msg);
+    if (this._statusEl) this._statusEl.textContent = "stream: " + msg;
   }
 
   async connect() {
-    this._setStatus("connecting (WHEP)...");
+    this._log("connecting via WHEP...");
     try {
       await this._connectWhep();
+      this._backoff = 1000; // reset on successful connection
     } catch (e) {
-      this._setStatus("WHEP failed: " + e.message + " — trying MJPEG...");
-      try {
-        await this._connectMjpeg();
-      } catch (e2) {
-        this._setStatus("ALL FAILED. WHEP: " + e.message + " | MJPEG: " + e2.message);
-        throw e2;
-      }
+      this._log("WHEP failed: " + e.message);
+      this._scheduleReconnect();
     }
   }
 
   async _connectWhep() {
     this.pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
     });
 
-    this.pc.addTransceiver("video", { direction: "recvonly" });
+    // Prefer H.264 for widest mobile hardware decode support.
+    // Pi Camera and USB fallback both encode H.264 natively, so this
+    // also avoids unnecessary transcoding in MediaMTX.
+    const videoTx = this.pc.addTransceiver("video", { direction: "recvonly" });
+    if (typeof RTCRtpReceiver.getCapabilities === "function") {
+      try {
+        const caps = RTCRtpReceiver.getCapabilities("video").codecs;
+        const h264 = caps.filter(c => c.mimeType === "video/H264");
+        const rest = caps.filter(c => c.mimeType !== "video/H264");
+        if (h264.length > 0) {
+          videoTx.setCodecPreferences([...h264, ...rest]);
+        }
+      } catch (_) {
+        // setCodecPreferences not supported — browser will negotiate normally
+      }
+    }
     this.pc.addTransceiver("audio", { direction: "recvonly" });
 
     this.pc.ontrack = (event) => {
-      const track = event.track;
-      this._setStatus("got track: " + track.kind + " codec=" + (track.getSettings().codec || "?"));
-      this.video.srcObject = event.streams[0];
-      // Ensure attributes are set in JS for mobile browsers that
-      // ignore HTML attributes on dynamically-assigned streams.
-      this.video.muted = true;
-      this.video.playsInline = true;
-      this._tryPlay();
-
-      // Start monitoring for actual frame delivery
-      if (track.kind === "video") {
+      this._log("track: " + event.track.kind);
+      if (event.track.kind === "video") {
+        this.video.srcObject = event.streams[0];
+        // Force attributes in JS — mobile browsers can ignore HTML attributes
+        // on dynamically-assigned MediaStreams.
+        this.video.muted = true;
+        this.video.playsInline = true;
+        this._tryPlay();
         this._startFrameCheck();
       }
     };
 
     this.pc.oniceconnectionstatechange = () => {
+      if (!this.pc) return;
       const state = this.pc.iceConnectionState;
-      this._setStatus("ICE: " + state);
+      this._log("ICE: " + state);
       if (state === "failed") {
-        console.warn("Stream failed, reconnecting in 3s...");
-        if (!this._reconnecting) {
-          this._reconnecting = true;
-          setTimeout(() => this.reconnect(), 3000);
-        }
+        this._scheduleReconnect();
       } else if (state === "disconnected") {
-        console.warn("Stream disconnected, will reconnect in 10s if not recovered...");
-        if (!this._reconnecting) {
-          this._reconnecting = true;
-          setTimeout(() => {
-            if (this.pc && this.pc.iceConnectionState !== "connected") {
-              this.reconnect();
-            } else {
-              this._reconnecting = false;
-            }
-          }, 10000);
-        }
+        // Temporary blip — give 10s to recover before reconnecting
+        setTimeout(() => {
+          if (this.pc && this.pc.iceConnectionState !== "connected") {
+            this._scheduleReconnect();
+          }
+        }, 10000);
       } else if (state === "connected") {
         this._reconnecting = false;
+        this._backoff = 1000;
       }
     };
 
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
+    this._log("gathering ICE candidates...");
 
-    this._setStatus("WHEP: gathering ICE candidates...");
-
-    // Wait for ICE gathering to complete (or timeout)
+    // Wait for ICE gathering — generous 5s timeout for mobile networks
     await new Promise((resolve) => {
-      if (this.pc.iceGatheringState === "complete") {
-        resolve();
-      } else {
-        const check = () => {
-          if (this.pc.iceGatheringState === "complete") {
-            this.pc.removeEventListener("icegatheringstatechange", check);
-            resolve();
-          }
-        };
-        this.pc.addEventListener("icegatheringstatechange", check);
-        setTimeout(resolve, 2000); // Timeout fallback
-      }
+      if (this.pc.iceGatheringState === "complete") return resolve();
+      const check = () => {
+        if (this.pc.iceGatheringState === "complete") {
+          this.pc.removeEventListener("icegatheringstatechange", check);
+          resolve();
+        }
+      };
+      this.pc.addEventListener("icegatheringstatechange", check);
+      setTimeout(resolve, 5000);
     });
 
-    this._setStatus("WHEP: POST to " + this.baseUrl + "/whep ...");
-
+    this._log("WHEP POST...");
     const res = await fetch(this.baseUrl + "/whep", {
       method: "POST",
       headers: { "Content-Type": "application/sdp" },
@@ -130,127 +130,68 @@ class StreamPlayer {
     });
 
     if (res.status !== 201) {
-      throw new Error(`WHEP failed: ${res.status}`);
+      throw new Error("WHEP " + res.status);
     }
 
     this.sessionUrl = res.headers.get("Location");
     const answerSdp = await res.text();
     await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-    this._setStatus("WHEP: SDP exchanged, waiting for ICE...");
+    this._log("SDP exchanged, waiting for media...");
   }
 
   /**
-   * Monitor video decode status. If after 5 seconds the video element
-   * has no decoded frames (videoWidth===0), WebRTC video decode failed
-   * (likely unsupported codec). Automatically fall back to MJPEG.
+   * Monitor video decode. If no frames arrive within 10s, tear down and
+   * retry WebRTC from scratch (the next attempt may negotiate a different
+   * codec path or hit a fresh keyframe).
    */
   _startFrameCheck() {
+    if (this._frameCheckTimer) clearInterval(this._frameCheckTimer);
     let checks = 0;
     this._frameCheckTimer = setInterval(() => {
       checks++;
-      const v = this.video;
-      const w = v.videoWidth;
-      const h = v.videoHeight;
-      const ready = v.readyState;
-      const paused = v.paused;
+      const w = this.video.videoWidth;
+      const h = this.video.videoHeight;
+      const ready = this.video.readyState;
 
-      // Get codec info from receiver stats if available
-      let codec = "?";
-      if (this.pc) {
-        const receivers = this.pc.getReceivers();
-        const vidRecv = receivers.find(r => r.track && r.track.kind === "video");
-        if (vidRecv) {
-          codec = vidRecv.track.label || "?";
-        }
+      if (this._debug) {
+        this._log("check #" + checks + ": " + w + "x" + h +
+          " ready=" + ready + " paused=" + this.video.paused);
       }
 
-      this._setStatus(
-        "WHEP check #" + checks +
-        ": " + w + "x" + h +
-        " ready=" + ready +
-        " paused=" + paused +
-        " track=" + codec
-      );
-
       if (w > 0 && h > 0 && ready >= 2) {
-        // Video is decoding frames — success!
-        this._setStatus("WHEP OK: " + w + "x" + h + " playing");
+        this._log("playing " + w + "x" + h);
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
         return;
       }
 
-      // After 5 seconds (5 checks at 1s each), video still has no frames.
-      // This typically means the codec is unsupported on this device.
-      // Fall back to MJPEG.
-      if (checks >= 5) {
+      // 10s without decoded frames — retry WebRTC entirely.
+      // Do NOT fall back to MJPEG (too expensive for internet delivery).
+      if (checks >= 10) {
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
-        this._setStatus(
-          "WHEP decode FAILED after 5s (" + w + "x" + h +
-          " ready=" + ready + "). Falling back to MJPEG..."
-        );
-        // Disconnect WebRTC and try MJPEG
-        this.disconnect();
-        this._connectMjpeg().catch((e2) => {
-          this._setStatus("MJPEG fallback ALSO failed: " + e2.message);
-        });
+        this._log("no frames after 10s, retrying WebRTC...");
+        this._scheduleReconnect();
       }
     }, 1000);
   }
 
-  async _connectMjpeg() {
-    this._setStatus("MJPEG: probing /api/stream/snapshot...");
-
-    // Verify the MJPEG endpoint is available with a snapshot probe
-    const probe = await fetch("/api/stream/snapshot");
-    if (!probe.ok) {
-      throw new Error(`MJPEG not available: ${probe.status}`);
-    }
-
-    this._setStatus("MJPEG: snapshot OK, starting stream...");
-
-    // Hide the <video> element and insert an <img> for MJPEG
-    const img = document.createElement("img");
-    img.id = "mjpeg-stream";
-    img.src = "/api/stream/mjpeg";
-    img.style.width = "100%";
-    img.style.height = "100%";
-    img.style.objectFit = "contain";
-    img.style.position = "absolute";
-    img.style.top = "0";
-    img.style.left = "0";
-
-    // Auto-reconnect on MJPEG stream error (e.g., server restart)
-    img.onerror = () => {
-      this._setStatus("MJPEG: stream error, reconnecting in 3s...");
-      setTimeout(() => {
-        if (this._mjpegImg) {
-          this._mjpegImg.src = "/api/stream/mjpeg?" + Date.now();
-        }
-      }, 3000);
-    };
-
-    img.onload = () => {
-      this._setStatus("MJPEG: receiving frames");
-    };
-
-    this.video.style.display = "none";
-    this.video.parentNode.insertBefore(img, this.video.nextSibling);
-    this._mjpegImg = img;
-
-    this._setStatus("MJPEG: connected");
+  _scheduleReconnect() {
+    if (this._reconnecting) return;
+    this._reconnecting = true;
+    const delay = this._backoff;
+    this._log("reconnecting in " + (delay / 1000) + "s...");
+    setTimeout(() => {
+      this.disconnect();
+      this._backoff = Math.min(this._backoff * 2, 30000);
+      this.connect();
+    }, delay);
   }
 
   async reconnect() {
     this.disconnect();
-    try {
-      await this.connect();
-      this._reconnecting = false;
-    } catch (e) {
-      console.error("Reconnect failed:", e);
-      setTimeout(() => this.reconnect(), 5000);
-    }
+    this._backoff = 1000;
+    await this.connect();
   }
 
   disconnect() {
@@ -266,42 +207,25 @@ class StreamPlayer {
       fetch(this.sessionUrl, { method: "DELETE" }).catch(() => {});
       this.sessionUrl = null;
     }
-    if (this._mjpegImg) {
-      this._mjpegImg.src = "";
-      this._mjpegImg.remove();
-      this._mjpegImg = null;
-      this.video.style.display = "";
-    }
   }
 
   /**
-   * Force video playback — mobile browsers (especially Safari) can
-   * silently ignore the autoplay attribute on MediaStream changes.
-   * Retries on loadedmetadata if the initial play() is rejected.
+   * Force video playback — mobile browsers (especially Safari) silently
+   * ignore the autoplay attribute on dynamically-assigned MediaStreams.
+   * Retries on loadedmetadata to cover Safari timing edge cases.
    */
   _tryPlay() {
-    const video = this.video;
-
-    const attemptPlay = () => {
-      const p = video.play();
+    const v = this.video;
+    const attempt = () => {
+      const p = v.play();
       if (p && typeof p.catch === "function") {
-        p.catch((err) => {
-          this._setStatus("play() rejected: " + err.message);
-        });
+        p.catch((err) => this._log("play() rejected: " + err.message));
       }
     };
-
-    // Attempt immediately
-    attemptPlay();
-
-    // Also attempt once metadata is ready (covers Safari timing edge cases)
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        this._setStatus("WHEP: metadata loaded, playing...");
-        attemptPlay();
-      },
-      { once: true }
-    );
+    attempt();
+    v.addEventListener("loadedmetadata", () => {
+      this._log("metadata loaded, playing...");
+      attempt();
+    }, { once: true });
   }
 }
