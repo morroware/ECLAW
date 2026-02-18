@@ -167,12 +167,27 @@ class StateMachine:
             await self._start_try()
 
     async def handle_drop_press(self, entry_id: str):
-        """Called when active player clicks drop. Single-click: activates the
-        relay, holds for drop_hold_max_ms, then auto-releases into POST_DROP."""
+        """Called when active player presses drop. Momentary: relay stays on
+        until handle_drop_release() or the safety timeout (drop_hold_max_ms)."""
         async with self._sm_lock:
             if self.state != TurnState.MOVING or entry_id != self.active_entry_id:
                 return
             await self._enter_state(TurnState.DROPPING)
+
+    async def handle_drop_release(self, entry_id: str):
+        """Called when active player releases drop. Turns relay off and
+        transitions to POST_DROP.  If the safety timeout already fired,
+        this is a harmless no-op."""
+        async with self._sm_lock:
+            if self.state != TurnState.DROPPING or entry_id != self.active_entry_id:
+                return
+            logger.info("Drop released by player")
+            # Cancel the safety timeout since the player released manually
+            if self._state_timer and not self._state_timer.done():
+                self._state_timer.cancel()
+            await self.gpio.drop_off()
+            self._state_timer = None
+            await self._enter_state(TurnState.POST_DROP)
 
     async def handle_win(self):
         """Called from win sensor callback (thread-safe bridged).
@@ -195,8 +210,8 @@ class StateMachine:
         if entry_id != self.active_entry_id:
             return
         await self.gpio.all_directions_off()
-        # Drop is now single-click with auto-release timer, so if we're in
-        # DROPPING state the _drop_hold_timeout will handle the transition.
+        # Drop is momentary — if we're in DROPPING state, the safety
+        # _drop_hold_timeout will auto-release and transition to POST_DROP.
         logger.info(f"Active player {entry_id} disconnected, directions OFF")
 
     async def handle_disconnect_timeout(self, entry_id: str):
