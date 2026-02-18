@@ -3,11 +3,29 @@
 import logging
 import os
 from functools import cached_property
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 _cfg_logger = logging.getLogger("config")
 
 _INSECURE_KEYS = {"changeme", "demo-admin-key", ""}
+
+# Resolve .env path relative to the project root (parent of app/) so it
+# works regardless of the working directory the process is launched from.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _resolve_env_file() -> Path:
+    """Return an absolute path to the .env file.
+
+    If ``ECLAW_ENV_FILE`` is set, use it (resolved relative to the project
+    root when not absolute).  Otherwise default to ``<project_root>/.env``.
+    """
+    raw = os.environ.get("ECLAW_ENV_FILE", "")
+    if raw:
+        p = Path(raw)
+        return p if p.is_absolute() else _PROJECT_ROOT / p
+    return _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -125,7 +143,7 @@ class Settings(BaseSettings):
     gpio_init_timeout_s: float = 10.0
 
     model_config = {
-        "env_file": os.environ.get("ECLAW_ENV_FILE", ".env"),
+        "env_file": str(_resolve_env_file()),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
