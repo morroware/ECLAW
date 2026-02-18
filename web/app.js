@@ -367,24 +367,44 @@
     }
   });
 
-  // -- Drop Buttons (single click to drop) ----------------------------------
+  // -- Drop Buttons (momentary press, like directional buttons) -------------
 
   function setupDropButton(btn) {
     if (!btn) return;
-    btn.addEventListener("click", (e) => {
+    let _dropActive = false;
+
+    function startDrop(e) {
       e.preventDefault();
+      if (_dropActive) return;
+      _dropActive = true;
       if (controlSocket) {
         controlSocket.dropStart();
         sfx.playDrop();
         vibrate(50);
       }
-    });
-    // Prevent mousedown from giving the button focus — if the button has
-    // focus, a subsequent Space press fires both the keyboard handler AND the
-    // button's default click action, causing a double-drop or missed drop.
-    btn.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-    });
+      btn.classList.add("active");
+    }
+
+    function endDrop(e) {
+      if (e) e.preventDefault();
+      if (!_dropActive) return;
+      _dropActive = false;
+      if (controlSocket) {
+        controlSocket.dropEnd();
+      }
+      btn.classList.remove("active");
+    }
+
+    // Mouse events
+    btn.addEventListener("mousedown", startDrop);
+    btn.addEventListener("mouseup", endDrop);
+    btn.addEventListener("mouseleave", () => { if (_dropActive) endDrop(); });
+
+    // Touch events
+    btn.addEventListener("touchstart", startDrop);
+    btn.addEventListener("touchend", endDrop);
+    btn.addEventListener("touchcancel", endDrop);
+
     btn.style.touchAction = "none";
   }
 

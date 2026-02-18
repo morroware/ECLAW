@@ -5,7 +5,8 @@
  * Key design decisions:
  *  - preventDefault is called for ALL game keys (arrows, WASD, Space) on EVERY
  *    event, including repeats, to stop the browser from scrolling the page.
- *  - dropStart() is only sent on the first non-repeat Space press.
+ *  - Drop (Space) is a momentary press just like directions: dropStart() on
+ *    keydown, dropEnd() on keyup.  De-duplicated via the `pressed` set.
  *  - Direction keydowns are de-duplicated via the `pressed` set so holding a
  *    key doesn't flood the server.
  *  - Visual feedback: highlights the matching on-screen desktop D-Pad button
@@ -51,11 +52,12 @@ function setupKeyboard(controlSocket, sfx) {
       }
     }
 
-    // Space = single-press drop. Always preventDefault to block page scroll,
-    // but only fire dropStart on the initial keydown (not repeats).
+    // Space = momentary drop (like directions). Always preventDefault to
+    // block page scroll. De-duplicated via `pressed` like directions.
     if (e.code === "Space") {
       e.preventDefault();
-      if (!e.repeat) {
+      if (!pressed.has("drop")) {
+        pressed.add("drop");
         controlSocket.dropStart();
         if (sfx) sfx.playDrop();
       }
@@ -74,13 +76,25 @@ function setupKeyboard(controlSocket, sfx) {
         highlightBtn(dir, false);
       }
     }
+
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (pressed.has("drop")) {
+        pressed.delete("drop");
+        controlSocket.dropEnd();
+      }
+    }
   }
 
-  // Safety: release all directions on window blur
+  // Safety: release all directions and drop on window blur
   function onBlur() {
     for (const key of pressed) {
-      controlSocket.keyup(key);
-      highlightBtn(key, false);
+      if (key === "drop") {
+        controlSocket.dropEnd();
+      } else {
+        controlSocket.keyup(key);
+        highlightBtn(key, false);
+      }
     }
     pressed.clear();
   }
@@ -94,10 +108,14 @@ function setupKeyboard(controlSocket, sfx) {
     document.removeEventListener("keydown", onKeydown);
     document.removeEventListener("keyup", onKeyup);
     window.removeEventListener("blur", onBlur);
-    // Release any held directions
+    // Release any held directions and drop
     for (const key of pressed) {
-      controlSocket.keyup(key);
-      highlightBtn(key, false);
+      if (key === "drop") {
+        controlSocket.dropEnd();
+      } else {
+        controlSocket.keyup(key);
+        highlightBtn(key, false);
+      }
     }
     pressed.clear();
   };

@@ -164,7 +164,7 @@ class ControlHandler:
             return
 
         # Rate limit keydown events (held directions fire rapidly).
-        # drop, keyup, and ready_confirm always pass through.
+        # drop_start, drop_end, keyup, and ready_confirm always pass through.
         if msg_type == "keydown":
             now = time.monotonic()
             last = self._last_command_time.get(entry_id, 0)
@@ -203,6 +203,9 @@ class ControlHandler:
 
         elif msg_type == "drop_start":
             await self.sm.handle_drop_press(entry_id)
+
+        elif msg_type == "drop_end":
+            await self.sm.handle_drop_release(entry_id)
 
         elif msg_type == "ready_confirm":
             await self.sm.handle_ready_confirm(entry_id)
