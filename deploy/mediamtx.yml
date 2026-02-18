@@ -23,6 +23,8 @@ paths:
     rpiCameraHeight: 720
     rpiCameraFPS: 30
     rpiCameraBitrate: 2000000
+    rpiCameraProfile: baseline
+    rpiCameraLevel: "3.1"
     rpiCameraIDRPeriod: 30
     rpiCameraAfMode: continuous
     rpiCameraAfRange: normal

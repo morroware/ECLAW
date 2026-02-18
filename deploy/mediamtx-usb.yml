@@ -30,6 +30,9 @@ paths:
       -framerate 30
       -i /dev/video0
       -c:v libx264
+      -profile:v baseline
+      -level:v 3.1
+      -pix_fmt yuv420p
       -preset ultrafast
       -tune zerolatency
       -b:v 2000k
