@@ -299,17 +299,15 @@ input, textarea {
    ========================================================================== */
 
 #game-area {
-  flex: 1 1 0%;
+  flex: 1;
   position: relative;
-  min-height: 120px; /* Never collapse below usable size */
+  min-height: 0; /* Allow flex shrinking */
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   /* Prevent any touch-triggered scrolling within the game area */
   touch-action: none;
-  /* Create stacking context so children z-index is scoped here */
-  isolation: isolate;
 }
 
 /* -- Video Stream Container -- fills the game area ----------------------- */
@@ -319,13 +317,6 @@ input, textarea {
   inset: 0;
   background: #000;
   overflow: hidden;
-  /* Explicit z-index ensures proper stacking beneath overlay panels (z:10) */
-  z-index: 1;
-  /* Force own compositing layer — fixes iOS Safari bug where
-     backdrop-filter on overlapping elements causes video to render black */
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  will-change: transform;
 }
 
 #stream-video, #mjpeg-stream {
@@ -333,14 +324,11 @@ input, textarea {
   height: 100%;
   object-fit: contain;
   display: block;
-  /* Ensure video element also gets its own compositing layer on mobile */
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
 }
 
-/* Active playing state — subtle border glow (box-shadow only, no border to avoid layout shift) */
+/* Active playing state — subtle border glow */
 #stream-container.playing {
-  box-shadow: inset 0 0 80px rgba(139, 92, 246, 0.06), inset 0 0 1px rgba(139,92,246,0.2);
+  box-shadow: inset 0 0 60px rgba(139, 92, 246, 0.08);
 }
 
 /* -- HUD Overlay (top of video) ------------------------------------------ */
@@ -1480,11 +1468,13 @@ button:hover .btn-shine {
     display: none !important;
   }
 
-  /* More translucent panels on mobile so video feed is visible */
+  /* DISABLE backdrop-filter on mobile — it causes video elements to
+     render as black rectangles on many mobile GPUs (iOS + Android).
+     Use a slightly more opaque solid background instead. */
   .overlay-panel {
-    background: rgba(16, 14, 32, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(10, 10, 20, 0.82);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* Bigger touch targets for mobile */
