@@ -1,16 +1,19 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — Reinstall Script (fresh clone from GitHub)
+# ECLAW — Reinstall / Update Script
 # ============================================================
 #
-# Uninstalls the current ECLAW installation, pulls a fresh copy
-# from GitHub, and runs the installer.
+# Full reinstall (fresh clone from GitHub) or lightweight update
+# (git pull + restart).
 #
 # Usage:
-#   ./reinstall.sh          Interactive mode
-#   ./reinstall.sh dev      Reinstall development environment
-#   ./reinstall.sh pi       Reinstall Pi 5 production deployment
-#   ./reinstall.sh demo     Reinstall Pi 5 PoC demo setup
+#   ./reinstall.sh              Interactive mode
+#   ./reinstall.sh dev          Reinstall development environment
+#   ./reinstall.sh pi           Reinstall Pi 5 production deployment
+#   ./reinstall.sh demo         Reinstall Pi 5 PoC demo setup
+#   ./reinstall.sh update       Quick update (git pull + restart)
+#   ./reinstall.sh update dev   Quick update for dev environment
+#   ./reinstall.sh update pi    Quick update for Pi 5 deployment
 #
 set -euo pipefail
 
@@ -72,6 +75,27 @@ restore_env() {
         cp "$ENV_BACKUP" "$INSTALL_DIR/.env"
         rm -f "$ENV_BACKUP"
         ok "Restored .env from backup"
+    fi
+}
+
+backup_pi_env() {
+    # Save the deployed .env from /opt/claw so Pi config isn't lost
+    PI_ENV_BACKUP=""
+    if [ -f /opt/claw/.env ]; then
+        PI_ENV_BACKUP="$(mktemp /tmp/eclaw-pi-env-backup.XXXXXX)"
+        sudo cp /opt/claw/.env "$PI_ENV_BACKUP"
+        ok "Backed up /opt/claw/.env to $PI_ENV_BACKUP"
+    fi
+}
+
+restore_pi_env() {
+    # Restore the deployed .env to /opt/claw so setup_pi.sh preserves it
+    if [ -n "${PI_ENV_BACKUP:-}" ] && [ -f "${PI_ENV_BACKUP:-}" ]; then
+        sudo mkdir -p /opt/claw
+        sudo cp "$PI_ENV_BACKUP" /opt/claw/.env
+        sudo chown claw:claw /opt/claw/.env 2>/dev/null || true
+        rm -f "$PI_ENV_BACKUP"
+        ok "Restored /opt/claw/.env from backup"
     fi
 }
 
@@ -211,12 +235,14 @@ reinstall_pi() {
     fi
 
     echo -e "  This will:"
-    echo "    1. Stop all ECLAW services"
-    echo "    2. Remove the current deployment"
-    echo "    3. Clone a fresh copy from GitHub"
-    echo "    4. Run the Pi 5 production installer"
+    echo "    1. Back up your /opt/claw/.env configuration"
+    echo "    2. Stop all ECLAW services"
+    echo "    3. Remove the current deployment"
+    echo "    4. Clone a fresh copy from GitHub"
+    echo "    5. Restore your .env and run the Pi 5 installer"
     echo ""
-    echo -e "  ${RED}All data (database, logs) will be lost.${NC}"
+    echo -e "  ${RED}Database and logs will be reset.${NC}"
+    echo -e "  ${GREEN}Your .env configuration will be preserved.${NC}"
     echo ""
     if ! confirm "Continue with fresh reinstall?"; then
         echo "  Aborted."
@@ -225,9 +251,11 @@ reinstall_pi() {
     echo ""
 
     check_deps
+    backup_pi_env
     clean_pi
     clean_dev
     fresh_clone
+    restore_pi_env
 
     info "Running installer..."
     cd "$INSTALL_DIR"
@@ -247,12 +275,14 @@ reinstall_demo() {
     fi
 
     echo -e "  This will:"
-    echo "    1. Stop all ECLAW services"
-    echo "    2. Remove the current deployment"
-    echo "    3. Clone a fresh copy from GitHub"
-    echo "    4. Run the Pi 5 demo installer"
+    echo "    1. Back up your /opt/claw/.env configuration"
+    echo "    2. Stop all ECLAW services"
+    echo "    3. Remove the current deployment"
+    echo "    4. Clone a fresh copy from GitHub"
+    echo "    5. Restore your .env and run the Pi 5 demo installer"
     echo ""
-    echo -e "  ${RED}All data (database, logs) will be lost.${NC}"
+    echo -e "  ${RED}Database and logs will be reset.${NC}"
+    echo -e "  ${GREEN}Your .env configuration will be preserved.${NC}"
     echo ""
     if ! confirm "Continue with fresh reinstall?"; then
         echo "  Aborted."
@@ -261,9 +291,11 @@ reinstall_demo() {
     echo ""
 
     check_deps
+    backup_pi_env
     clean_pi
     clean_dev
     fresh_clone
+    restore_pi_env
 
     info "Running installer..."
     cd "$INSTALL_DIR"
@@ -271,41 +303,194 @@ reinstall_demo() {
     exec ./install.sh demo
 }
 
+# ---- Quick Update Mode -----------------------------------------------------
+#
+# Lightweight update: git pull + rebuild deps + restart.
+# No fresh clone, preserves .env and database.
+
+update_dev() {
+    echo ""
+    echo -e "${BOLD}========================================${NC}"
+    echo -e "${BOLD}  ECLAW — Quick Update (Dev)${NC}"
+    echo -e "${BOLD}========================================${NC}"
+    echo ""
+
+    if ! $RUNNING_FROM_REPO; then
+        fail "Must run from inside the ECLAW repository."
+    fi
+
+    cd "$INSTALL_DIR"
+
+    info "Pulling latest code..."
+    git pull || fail "git pull failed. Resolve conflicts and try again."
+    ok "Code updated"
+
+    if [ -d venv ]; then
+        info "Updating dependencies..."
+        ./venv/bin/pip install --upgrade pip -q
+        if [ -f requirements-dev.txt ]; then
+            ./venv/bin/pip install -r requirements-dev.txt -q
+        else
+            ./venv/bin/pip install -r requirements.txt -q
+        fi
+        ok "Dependencies updated"
+    else
+        warn "No venv found — running full dev install."
+        exec ./install.sh dev
+    fi
+
+    echo ""
+    echo -e "${GREEN}  Update complete!${NC}"
+    echo ""
+    echo "  Restart the server to apply changes:"
+    echo "    make run"
+    echo "    # or: MOCK_GPIO=true uvicorn app.main:app --reload"
+    echo ""
+}
+
+update_pi() {
+    local svc_mode="${1:-pi}"
+
+    echo ""
+    echo -e "${BOLD}========================================${NC}"
+    echo -e "${BOLD}  ECLAW — Quick Update (Pi 5)${NC}"
+    echo -e "${BOLD}========================================${NC}"
+    echo ""
+
+    if [ "$(id -u)" -eq 0 ]; then
+        fail "Do not run as root. Run as a normal user with sudo access."
+    fi
+
+    if ! $RUNNING_FROM_REPO; then
+        fail "Must run from inside the ECLAW repository."
+    fi
+
+    cd "$INSTALL_DIR"
+
+    echo -e "  This will:"
+    echo "    1. Pull latest code from GitHub"
+    echo "    2. Stop claw services"
+    echo "    3. Update files in /opt/claw (preserving .env and data)"
+    echo "    4. Update Python dependencies"
+    echo "    5. Restart services"
+    echo ""
+    echo -e "  ${GREEN}Your .env and database will be preserved.${NC}"
+    echo ""
+    if ! confirm "Continue with quick update?"; then
+        echo "  Aborted."
+        exit 0
+    fi
+    echo ""
+
+    info "Pulling latest code..."
+    git pull || fail "git pull failed. Resolve conflicts and try again."
+    ok "Code updated"
+
+    info "Stopping services..."
+    for svc in claw-watchdog claw-server; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            sudo systemctl stop "$svc"
+            ok "Stopped $svc"
+        fi
+    done
+
+    if [ ! -d /opt/claw ]; then
+        warn "/opt/claw not found — falling back to full reinstall."
+        exec ./install.sh "$svc_mode"
+    fi
+
+    info "Updating application files..."
+    for dir in app migrations watchdog; do
+        if [ -d "$INSTALL_DIR/$dir" ]; then
+            sudo rm -rf "/opt/claw/$dir"
+            sudo cp -r "$INSTALL_DIR/$dir" /opt/claw/
+        fi
+    done
+    if [ -d "$INSTALL_DIR/web" ]; then
+        sudo rm -rf /opt/claw/web
+        sudo cp -r "$INSTALL_DIR/web" /opt/claw/
+    fi
+    sudo cp "$INSTALL_DIR/requirements.txt" /opt/claw/
+    sudo chown -R claw:claw /opt/claw
+    ok "Application files updated in /opt/claw"
+
+    info "Updating dependencies..."
+    sudo -u claw /opt/claw/venv/bin/pip install --upgrade pip -q
+    sudo -u claw /opt/claw/venv/bin/pip install -r /opt/claw/requirements.txt -q
+    ok "Dependencies updated"
+
+    info "Restarting services..."
+    sudo systemctl start claw-server
+    sleep 2
+    sudo systemctl start claw-watchdog
+
+    echo ""
+    for svc in mediamtx claw-server claw-watchdog nginx; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            ok "$svc is running"
+        else
+            warn "$svc is NOT running"
+        fi
+    done
+
+    PI_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "<pi-ip>")
+    echo ""
+    echo -e "${GREEN}  Update complete!${NC}"
+    echo ""
+    echo "  Access the game:  http://$PI_IP"
+    echo "  Admin panel:      http://$PI_IP/admin/panel"
+    echo ""
+}
+
 # ---- Interactive Menu ------------------------------------------------------
 
 interactive_menu() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Fresh Reinstall from GitHub${NC}"
+    echo -e "${BOLD}  ECLAW — Reinstall / Update${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
-    echo "  This will remove your current ECLAW installation,"
-    echo "  clone a fresh copy from GitHub, and reinstall."
+    echo "  What would you like to do?"
     echo ""
-    echo "  What type of installation?"
+    echo "  1) ${GREEN}update${NC} — Quick update (recommended)"
+    echo "            git pull + update deps + restart services."
+    echo "            Preserves your .env and database."
     echo ""
-    echo "  1) ${GREEN}dev${NC}   — Development environment"
-    echo "            Reinstall venv + deps on this machine."
-    echo "            Your .env will be backed up and restored."
+    echo "  2) ${YELLOW}dev${NC}    — Full reinstall (development)"
+    echo "            Fresh clone, rebuild venv."
+    echo "            .env is backed up and restored."
     echo ""
-    echo "  2) ${YELLOW}pi${NC}    — Pi 5 production deployment"
-    echo "            Full clean reinstall of all services."
+    echo "  3) ${YELLOW}pi${NC}     — Full reinstall (Pi 5 production)"
+    echo "            Fresh clone, full clean reinstall."
+    echo "            .env is backed up and restored."
     echo ""
-    echo "  3) ${YELLOW}demo${NC}  — Pi 5 PoC demo setup"
+    echo "  4) ${YELLOW}demo${NC}   — Full reinstall (Pi 5 demo)"
     echo "            Same as pi, with short demo timers."
     echo ""
-    echo -n "  Choose [1/2/3]: "
+    echo -n "  Choose [1/2/3/4]: "
     read -r choice
 
     case "$choice" in
-        1|dev)  reinstall_dev ;;
-        2|pi)   reinstall_pi ;;
-        3|demo) reinstall_demo ;;
+        1|update) update_auto ;;
+        2|dev)    reinstall_dev ;;
+        3|pi)     reinstall_pi ;;
+        4|demo)   reinstall_demo ;;
         *)
-            echo "  Invalid choice. Usage: ./reinstall.sh [dev|pi|demo]"
+            echo "  Invalid choice. Usage: ./reinstall.sh [update|dev|pi|demo]"
             exit 1
             ;;
     esac
+}
+
+# ---- Auto-detect update mode -----------------------------------------------
+
+update_auto() {
+    # Detect whether this is a dev or Pi deployment and update accordingly.
+    if [ -d /opt/claw ] && [ -f /etc/systemd/system/claw-server.service ]; then
+        update_pi "pi"
+    else
+        update_dev
+    fi
 }
 
 # ---- Main ------------------------------------------------------------------
@@ -314,20 +499,37 @@ case "${1:-}" in
     dev)        reinstall_dev ;;
     pi)         reinstall_pi ;;
     demo)       reinstall_demo ;;
+    update)
+        # Allow: ./reinstall.sh update [dev|pi|demo]
+        case "${2:-}" in
+            dev)   update_dev ;;
+            pi)    update_pi "pi" ;;
+            demo)  update_pi "demo" ;;
+            "")    update_auto ;;
+            *)     fail "Unknown update target: $2. Use: update [dev|pi|demo]" ;;
+        esac
+        ;;
     --help|-h)
-        echo "Usage: ./reinstall.sh [dev|pi|demo]"
+        echo "Usage: ./reinstall.sh [update|dev|pi|demo]"
         echo ""
-        echo "  dev   Reinstall development environment"
-        echo "  pi    Reinstall Pi 5 production deployment"
-        echo "  demo  Reinstall Pi 5 PoC demo setup"
+        echo "  Quick update (recommended for routine updates):"
+        echo "    update       Auto-detect environment and update"
+        echo "    update dev   Update development environment"
+        echo "    update pi    Update Pi 5 production deployment"
+        echo "    update demo  Update Pi 5 demo deployment"
         echo ""
-        echo "Clones a fresh copy from: $REPO_URL"
+        echo "  Full reinstall (destructive — fresh clone from GitHub):"
+        echo "    dev          Reinstall development environment"
+        echo "    pi           Reinstall Pi 5 production deployment"
+        echo "    demo         Reinstall Pi 5 PoC demo setup"
+        echo ""
+        echo "Repo: $REPO_URL"
         echo "Run without arguments for interactive mode."
         ;;
     "")         interactive_menu ;;
     *)
         echo "Unknown option: $1"
-        echo "Usage: ./reinstall.sh [dev|pi|demo]"
+        echo "Usage: ./reinstall.sh [update|dev|pi|demo]"
         exit 1
         ;;
 esac
