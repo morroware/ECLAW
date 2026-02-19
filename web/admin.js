@@ -11,6 +11,7 @@
   let dashboardInterval = null;
   let configFields = []; // Loaded from server
   let pendingChanges = {}; // key -> new value
+  let lastDashboard = null; // Cache last dashboard response for mock flag
 
   // -- DOM Elements -----------------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
@@ -21,6 +22,7 @@
   const loginForm = $("#login-form");
   const loginError = $("#login-error");
   const sidebar = $("#sidebar");
+  const sidebarOverlay = $("#sidebar-overlay");
 
   // -- Helpers ----------------------------------------------------------------
 
@@ -47,9 +49,11 @@
   }
 
   function formatUptime(seconds) {
-    const h = Math.floor(seconds / 3600);
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
     if (h > 0) return `${h}h ${m}m`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
@@ -60,6 +64,7 @@
     const now = Date.now();
     const then = new Date(isoStr + (isoStr.endsWith("Z") ? "" : "Z")).getTime();
     const diffS = Math.floor((now - then) / 1000);
+    if (diffS < 0) return "just now";
     if (diffS < 60) return "just now";
     if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
     if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
@@ -73,7 +78,20 @@
     el.className = `toast toast-${type}`;
     el.textContent = message;
     container.appendChild(el);
-    setTimeout(() => el.remove(), 4200);
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 4200);
+  }
+
+  function setConnectionStatus(connected) {
+    const dot = $("#sidebar-dot");
+    const text = $("#sidebar-status-text");
+    if (!dot || !text) return;
+    if (connected) {
+      dot.className = "sidebar-dot connected";
+      text.textContent = "Connected";
+    } else {
+      dot.className = "sidebar-dot error";
+      text.textContent = "Disconnected";
+    }
   }
 
   // -- Authentication ---------------------------------------------------------
@@ -101,31 +119,39 @@
     return false;
   }
 
-  loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    loginError.textContent = "";
-    const key = $("#admin-key-input").value.trim();
-    if (!key) return;
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      loginError.textContent = "";
+      const key = $("#admin-key-input").value.trim();
+      if (!key) return;
 
-    const ok = await verifyKey(key);
-    if (!ok) {
-      loginError.textContent = "Invalid admin key.";
-    }
-  });
+      const btn = $("#login-btn");
+      btn.disabled = true;
+      const ok = await verifyKey(key);
+      btn.disabled = false;
+      if (!ok) {
+        loginError.textContent = "Invalid admin key. Please try again.";
+      }
+    });
+  }
 
   function logout() {
     adminKey = "";
     sessionStorage.removeItem("eclaw_admin_key");
-    adminPanel.classList.add("hidden");
-    loginScreen.classList.remove("hidden");
-    clearInterval(dashboardInterval);
+    if (adminPanel) adminPanel.classList.add("hidden");
+    if (loginScreen) loginScreen.classList.remove("hidden");
+    if (dashboardInterval) clearInterval(dashboardInterval);
+    dashboardInterval = null;
+    setConnectionStatus(false);
   }
 
   function showAdmin() {
-    loginScreen.classList.add("hidden");
-    adminPanel.classList.remove("hidden");
+    if (loginScreen) loginScreen.classList.add("hidden");
+    if (adminPanel) adminPanel.classList.remove("hidden");
+    setConnectionStatus(true);
     refreshDashboard();
-    dashboardInterval = setInterval(refreshDashboard, 5000);
+    dashboardInterval = setInterval(refreshDashboard, 4000);
     loadConfig();
     loadQueue();
   }
@@ -145,22 +171,41 @@
       e.preventDefault();
       const section = link.dataset.section;
       switchSection(section);
-      // Close mobile sidebar
-      sidebar.classList.remove("open");
+      closeSidebar();
     });
   });
 
+  function openSidebar() {
+    if (sidebar) sidebar.classList.add("open");
+    if (sidebarOverlay) {
+      sidebarOverlay.classList.remove("hidden");
+      // Force reflow, then add visible class for transition
+      void sidebarOverlay.offsetWidth;
+      sidebarOverlay.classList.add("visible");
+    }
+  }
+
+  function closeSidebar() {
+    if (sidebar) sidebar.classList.remove("open");
+    if (sidebarOverlay) {
+      sidebarOverlay.classList.remove("visible");
+      setTimeout(() => sidebarOverlay.classList.add("hidden"), 300);
+    }
+  }
+
   if ($("#menu-toggle")) {
     $("#menu-toggle").addEventListener("click", () => {
-      sidebar.classList.toggle("open");
+      if (sidebar && sidebar.classList.contains("open")) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
     });
   }
 
-  // Close sidebar on content click (mobile)
-  if ($("#content")) {
-    $("#content").addEventListener("click", () => {
-      sidebar.classList.remove("open");
-    });
+  // Close sidebar when clicking overlay
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener("click", closeSidebar);
   }
 
   function switchSection(name) {
@@ -182,47 +227,56 @@
   async function refreshDashboard() {
     try {
       const res = await api("GET", "/admin/dashboard");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setConnectionStatus(false);
+        return;
+      }
+      setConnectionStatus(true);
       const data = await res.json();
+      lastDashboard = data;
 
-      $("#dash-uptime").textContent = formatUptime(data.uptime_seconds);
-      $("#dash-state").textContent = formatState(data.game_state);
-      $("#dash-viewers").textContent = data.viewer_count;
-      $("#dash-queue-size").textContent = data.queue ? data.queue.length : 0;
+      const el = (id) => $(`#${id}`);
+
+      el("dash-uptime").textContent = formatUptime(data.uptime_seconds);
+      el("dash-state").textContent = formatState(data.game_state);
+      el("dash-viewers").textContent = String(data.viewer_count);
+      el("dash-queue-size").textContent = String(data.queue ? data.queue.length : 0);
 
       // Stats
       const stats = data.stats || {};
-      const total = (stats.total_completed || 0);
-      const wins = (stats.wins || 0);
-      $("#dash-total-games").textContent = total;
-      $("#dash-win-rate").textContent = total > 0
+      const total = stats.total_completed || 0;
+      const wins = stats.wins || 0;
+      el("dash-total-games").textContent = String(total);
+      el("dash-win-rate").textContent = total > 0
         ? `${Math.round((wins / total) * 100)}%`
         : "--";
 
       // Flags
       toggleFlag("flag-paused", data.paused);
       toggleFlag("flag-gpio-locked", data.gpio_locked);
-      toggleFlag("flag-mock", true); // Always show if mock_gpio detected from config
+      // mock_gpio flag: derive from config if loaded, otherwise hide
+      const mockField = configFields.find((f) => f.key === "mock_gpio");
+      toggleFlag("flag-mock", mockField ? mockField.value === true || mockField.value === "true" : false);
 
       // Active player
       if (data.active_player != null) {
         const activeEntry = (data.queue || []).find(
           (e) => e.state === "active" || e.state === "ready"
         );
-        $("#dash-active-player").textContent = activeEntry
+        el("dash-active-player").textContent = activeEntry
           ? activeEntry.name
           : `Entry #${data.active_player}`;
-        $("#dash-try-info").textContent = `Try ${data.current_try}/${data.max_tries}`;
+        el("dash-try-info").textContent = `Try ${data.current_try} / ${data.max_tries}`;
       } else {
-        $("#dash-active-player").textContent = "None";
-        $("#dash-try-info").textContent = "";
+        el("dash-active-player").textContent = "None";
+        el("dash-try-info").textContent = "Waiting for players";
       }
 
       // Recent results
       renderDashRecent(data.recent_results || []);
 
     } catch (e) {
-      // Silent — dashboard is non-critical
+      setConnectionStatus(false);
     }
   }
 
@@ -245,15 +299,16 @@
 
   function renderDashRecent(results) {
     const el = $("#dash-recent");
+    if (!el) return;
     if (!results.length) {
-      el.innerHTML = '<p class="text-dim">No recent games</p>';
+      el.innerHTML = '<p class="text-dim">No recent games yet</p>';
       return;
     }
     el.innerHTML = results
       .map((r) => {
         const isWin = r.result === "win";
         const badge = isWin ? "badge-win" : "badge-loss";
-        const label = isWin ? "WIN" : (r.result || "").toUpperCase();
+        const label = isWin ? "WIN" : (r.result || "LOSS").toUpperCase();
         return `<div class="recent-entry">
           <span class="recent-badge ${badge}">${label}</span>
           <span class="recent-name">${escapeHtml(r.name)}</span>
@@ -267,14 +322,19 @@
 
   async function controlAction(path, btn) {
     const fb = $("#control-feedback");
+    if (!fb) return;
     btn.disabled = true;
     try {
       const res = await api("POST", path);
       const data = await res.json();
-      fb.classList.remove("hidden", "error");
-      fb.classList.add("success");
-      fb.textContent = data.warning || data.message || "Action completed.";
-      toast("Action completed.", "success");
+      if (res.ok) {
+        fb.classList.remove("hidden", "error");
+        fb.classList.add("success");
+        fb.textContent = data.warning || data.message || "Action completed successfully.";
+        toast("Action completed.", "success");
+      } else {
+        throw new Error(data.detail || "Action failed");
+      }
       refreshDashboard();
     } catch (e) {
       fb.classList.remove("hidden", "success");
@@ -283,27 +343,37 @@
       toast("Action failed.", "error");
     } finally {
       btn.disabled = false;
-      setTimeout(() => fb.classList.add("hidden"), 5000);
+      setTimeout(() => fb.classList.add("hidden"), 6000);
     }
   }
 
-  $("#ctrl-advance").addEventListener("click", function () {
-    controlAction("/admin/advance", this);
-  });
-  $("#ctrl-pause").addEventListener("click", function () {
-    controlAction("/admin/pause", this);
-  });
-  $("#ctrl-resume").addEventListener("click", function () {
-    controlAction("/admin/resume", this);
-  });
-  $("#ctrl-estop").addEventListener("click", function () {
-    if (confirm("Emergency Stop: This will lock all GPIO controls. Continue?")) {
-      controlAction("/admin/emergency-stop", this);
-    }
-  });
-  $("#ctrl-unlock").addEventListener("click", function () {
-    controlAction("/admin/unlock", this);
-  });
+  if ($("#ctrl-advance")) {
+    $("#ctrl-advance").addEventListener("click", function () {
+      controlAction("/admin/advance", this);
+    });
+  }
+  if ($("#ctrl-pause")) {
+    $("#ctrl-pause").addEventListener("click", function () {
+      controlAction("/admin/pause", this);
+    });
+  }
+  if ($("#ctrl-resume")) {
+    $("#ctrl-resume").addEventListener("click", function () {
+      controlAction("/admin/resume", this);
+    });
+  }
+  if ($("#ctrl-estop")) {
+    $("#ctrl-estop").addEventListener("click", function () {
+      if (confirm("Emergency Stop: This will lock all GPIO controls. Continue?")) {
+        controlAction("/admin/emergency-stop", this);
+      }
+    });
+  }
+  if ($("#ctrl-unlock")) {
+    $("#ctrl-unlock").addEventListener("click", function () {
+      controlAction("/admin/unlock", this);
+    });
+  }
 
   // -- Queue Management -------------------------------------------------------
 
@@ -320,6 +390,7 @@
 
   function renderQueue(entries) {
     const tbody = $("#queue-tbody");
+    if (!tbody) return;
     if (!entries.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-dim">Queue is empty</td></tr>';
       return;
@@ -344,15 +415,22 @@
       btn.addEventListener("click", async function () {
         const id = this.dataset.id;
         const name = this.dataset.name;
-        if (!confirm(`Remove ${name} from the queue?`)) return;
+        if (!confirm(`Remove "${name}" from the queue?`)) return;
+        this.disabled = true;
         try {
-          await api("POST", `/admin/kick/${id}`);
-          toast(`${name} removed.`, "success");
+          const res = await api("POST", `/admin/kick/${id}`);
+          if (res.ok) {
+            toast(`${name} removed from queue.`, "success");
+          } else {
+            const data = await res.json();
+            toast(data.detail || "Failed to kick player.", "error");
+          }
           loadQueue();
           refreshDashboard();
         } catch (e) {
           toast("Failed to kick player.", "error");
         }
+        this.disabled = false;
       });
     });
   }
@@ -377,14 +455,14 @@
   }
 
   function renderConfig() {
-    const container = $("#config-groups");
     const categoryFilter = $("#config-category-filter");
+    if (!categoryFilter) return;
 
     // Build categories
     const categories = [...new Set(configFields.map((f) => f.category))];
     categoryFilter.innerHTML =
       '<option value="">All Categories</option>' +
-      categories.map((c) => `<option value="${c}">${c}</option>`).join("");
+      categories.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
 
     renderConfigFields(configFields);
     updateConfigActions();
@@ -392,8 +470,9 @@
 
   function renderConfigFields(fields) {
     const container = $("#config-groups");
-    const searchTerm = ($("#config-search").value || "").toLowerCase();
-    const catFilter = $("#config-category-filter").value;
+    if (!container) return;
+    const searchTerm = ($("#config-search") ? $("#config-search").value : "").toLowerCase();
+    const catFilter = $("#config-category-filter") ? $("#config-category-filter").value : "";
 
     // Filter
     let filtered = fields;
@@ -418,7 +497,7 @@
     }
 
     if (Object.keys(groups).length === 0) {
-      container.innerHTML = '<p class="text-dim">No matching settings found.</p>';
+      container.innerHTML = '<p class="text-dim" style="padding: 20px 0;">No matching settings found.</p>';
       return;
     }
 
@@ -442,7 +521,7 @@
           </div>
           <div class="field-input-wrap">
             ${renderFieldInput(f, currentValue)}
-            <div class="field-default">Default: ${formatDefault(f.default, f.type)}</div>
+            <div class="field-default">Default: ${formatDefault(f.default)}</div>
           </div>
         </div>`;
       }
@@ -476,25 +555,24 @@
 
     if (field.options) {
       const opts = field.options
-        .map((o) => `<option value="${o}"${String(currentValue) === o ? " selected" : ""}>${o}</option>`)
+        .map((o) => `<option value="${escapeHtml(o)}"${String(currentValue) === o ? " selected" : ""}>${escapeHtml(o)}</option>`)
         .join("");
       return `<select data-config-key="${key}">${opts}</select>`;
     }
 
     const inputType = field.type === "integer" || field.type === "number" ? "number" : "text";
-    const step = field.type === "number" ? 'step="any"' : "";
+    const step = field.type === "number" ? ' step="any"' : "";
     const val = currentValue != null ? currentValue : "";
     const modified = key in pendingChanges ? " modified" : "";
-    const isSensitive = field.key === "admin_api_key" ? ' type="password"' : "";
 
-    if (isSensitive) {
+    if (field.key === "admin_api_key") {
       return `<input type="password" data-config-key="${key}" value="${escapeHtml(String(val))}" class="${modified}">`;
     }
 
-    return `<input type="${inputType}" ${step} data-config-key="${key}" value="${escapeHtml(String(val))}" class="${modified}">`;
+    return `<input type="${inputType}"${step} data-config-key="${key}" value="${escapeHtml(String(val))}" class="${modified}">`;
   }
 
-  function formatDefault(def, type) {
+  function formatDefault(def) {
     if (def === true) return "true";
     if (def === false) return "false";
     if (def === null || def === undefined) return "none";
@@ -509,8 +587,13 @@
     let newValue = e.target.value;
 
     // Coerce type
-    if (field.type === "integer") newValue = parseInt(newValue, 10) || 0;
-    else if (field.type === "number") newValue = parseFloat(newValue) || 0;
+    if (field.type === "integer") {
+      newValue = newValue === "" ? 0 : parseInt(newValue, 10);
+      if (isNaN(newValue)) newValue = 0;
+    } else if (field.type === "number") {
+      newValue = newValue === "" ? 0 : parseFloat(newValue);
+      if (isNaN(newValue)) newValue = 0;
+    }
 
     // Check if it's actually changed from the original
     if (String(newValue) === String(field.value)) {
@@ -557,10 +640,11 @@
     const count = Object.keys(pendingChanges).length;
     const actions = $("#config-actions");
     const countEl = $("#config-change-count");
+    if (!actions || !countEl) return;
 
     if (count > 0) {
       actions.classList.remove("hidden");
-      countEl.textContent = `${count} change${count !== 1 ? "s" : ""}`;
+      countEl.textContent = `${count} unsaved change${count !== 1 ? "s" : ""}`;
     } else {
       actions.classList.add("hidden");
     }
@@ -573,14 +657,19 @@
       if (count === 0) return;
 
       const fb = $("#config-feedback");
+      const btn = $("#config-save-btn");
+      if (btn) btn.disabled = true;
+
       try {
         const res = await api("PUT", "/admin/config", { changes: pendingChanges });
         const data = await res.json();
         if (res.ok) {
-          fb.classList.remove("hidden", "error");
-          fb.classList.add("success");
-          fb.textContent = data.message;
-          toast("Configuration saved.", "success");
+          if (fb) {
+            fb.classList.remove("hidden", "error");
+            fb.classList.add("success");
+            fb.textContent = data.message;
+          }
+          toast("Configuration saved successfully.", "success");
 
           // Update local field values
           for (const [key, val] of Object.entries(pendingChanges)) {
@@ -594,12 +683,15 @@
           throw new Error(data.detail || "Save failed");
         }
       } catch (e) {
-        fb.classList.remove("hidden", "success");
-        fb.classList.add("error");
-        fb.textContent = "Save failed: " + e.message;
+        if (fb) {
+          fb.classList.remove("hidden", "success");
+          fb.classList.add("error");
+          fb.textContent = "Save failed: " + e.message;
+        }
         toast("Failed to save configuration.", "error");
       }
-      setTimeout(() => fb.classList.add("hidden"), 8000);
+      if (btn) btn.disabled = false;
+      if (fb) setTimeout(() => fb.classList.add("hidden"), 8000);
     });
   }
 
@@ -615,8 +707,10 @@
 
   // Config search/filter
   if ($("#config-search")) {
+    let searchTimeout = null;
     $("#config-search").addEventListener("input", () => {
-      renderConfigFields(configFields);
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => renderConfigFields(configFields), 150);
     });
   }
   if ($("#config-category-filter")) {

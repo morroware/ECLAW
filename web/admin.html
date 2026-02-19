@@ -4,24 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0a0a0f">
   <title>ECLAW Admin Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="admin.css?v=20260219">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin.css?v=20260219b">
 </head>
 <body>
+  <!-- Animated background -->
+  <div id="bg-particles" aria-hidden="true"></div>
+
   <!-- Login Screen -->
   <div id="login-screen">
     <div class="login-card">
+      <div class="login-glow"></div>
       <div class="login-header">
-        <span class="login-icon">&#128272;</span>
-        <h1>ECLAW Admin</h1>
+        <div class="login-icon-wrap">
+          <div class="login-icon-ring"></div>
+          <span class="login-icon">&#128272;</span>
+        </div>
+        <h1>ECLAW <span class="login-accent">ADMIN</span></h1>
         <p>Enter your admin API key to continue</p>
       </div>
       <form id="login-form">
-        <input type="password" id="admin-key-input" placeholder="Admin API Key" required autocomplete="current-password">
-        <button type="submit" id="login-btn">Sign In</button>
+        <div class="input-group">
+          <span class="input-icon">&#128273;</span>
+          <input type="password" id="admin-key-input" placeholder="Admin API Key" required autocomplete="current-password">
+        </div>
+        <button type="submit" id="login-btn">
+          <span class="btn-text">SIGN IN</span>
+          <span class="btn-shine"></span>
+        </button>
         <p id="login-error" class="error"></p>
       </form>
     </div>
@@ -34,25 +48,37 @@
       <div class="sidebar-header">
         <span class="sidebar-icon">&#127984;</span>
         <div>
-          <span class="sidebar-title">ECLAW</span>
-          <span class="sidebar-sub">Admin Panel</span>
+          <span class="sidebar-title">THE CASTLE</span>
+          <span class="sidebar-sub">ADMIN PANEL</span>
         </div>
       </div>
       <ul class="nav-links">
         <li><a href="#" data-section="dashboard" class="nav-link active">
-          <span class="nav-icon">&#128202;</span> Dashboard
+          <span class="nav-icon">&#128202;</span>
+          <span>Dashboard</span>
+          <span class="nav-indicator"></span>
         </a></li>
         <li><a href="#" data-section="controls" class="nav-link">
-          <span class="nav-icon">&#127918;</span> Game Controls
+          <span class="nav-icon">&#127918;</span>
+          <span>Game Controls</span>
+          <span class="nav-indicator"></span>
         </a></li>
         <li><a href="#" data-section="queue" class="nav-link">
-          <span class="nav-icon">&#128101;</span> Queue
+          <span class="nav-icon">&#128101;</span>
+          <span>Queue</span>
+          <span class="nav-indicator"></span>
         </a></li>
         <li><a href="#" data-section="config" class="nav-link">
-          <span class="nav-icon">&#9881;</span> Configuration
+          <span class="nav-icon">&#9881;&#65039;</span>
+          <span>Configuration</span>
+          <span class="nav-indicator"></span>
         </a></li>
       </ul>
       <div class="sidebar-footer">
+        <div class="sidebar-status">
+          <span class="sidebar-dot" id="sidebar-dot"></span>
+          <span id="sidebar-status-text">Connecting...</span>
+        </div>
         <button id="logout-btn" class="btn-ghost">Sign Out</button>
         <a href="/" class="btn-ghost">Back to Game</a>
       </div>
@@ -61,53 +87,59 @@
     <!-- Mobile header -->
     <header id="mobile-header">
       <button id="menu-toggle" type="button" aria-label="Toggle menu">&#9776;</button>
-      <span class="mobile-title">ECLAW Admin</span>
+      <span class="mobile-title">ECLAW ADMIN</span>
       <button id="mobile-logout" type="button" class="btn-sm">Sign Out</button>
     </header>
 
     <!-- Main Content -->
     <main id="content">
-      <!-- Dashboard Section -->
+      <!-- ============================================================ -->
+      <!-- DASHBOARD                                                     -->
+      <!-- ============================================================ -->
       <section id="section-dashboard" class="section active">
-        <h2>Dashboard</h2>
+        <div class="section-header">
+          <h2>Dashboard</h2>
+          <span class="section-badge" id="dash-refresh-badge">Live</span>
+        </div>
+
         <div class="stats-grid">
-          <div class="stat-card">
-            <span class="stat-icon">&#9201;</span>
+          <div class="stat-card stat-glow-purple">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#9201;</span></div>
             <div class="stat-body">
               <span class="stat-label">Uptime</span>
               <span class="stat-value" id="dash-uptime">--</span>
             </div>
           </div>
-          <div class="stat-card">
-            <span class="stat-icon">&#127918;</span>
+          <div class="stat-card stat-glow-cyan">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#127918;</span></div>
             <div class="stat-body">
               <span class="stat-label">Game State</span>
               <span class="stat-value" id="dash-state">--</span>
             </div>
           </div>
-          <div class="stat-card">
-            <span class="stat-icon">&#128065;</span>
+          <div class="stat-card stat-glow-green">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#128065;</span></div>
             <div class="stat-body">
               <span class="stat-label">Viewers</span>
               <span class="stat-value" id="dash-viewers">--</span>
             </div>
           </div>
-          <div class="stat-card">
-            <span class="stat-icon">&#128101;</span>
+          <div class="stat-card stat-glow-amber">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#128101;</span></div>
             <div class="stat-body">
               <span class="stat-label">Queue Size</span>
               <span class="stat-value" id="dash-queue-size">--</span>
             </div>
           </div>
-          <div class="stat-card">
-            <span class="stat-icon">&#127942;</span>
+          <div class="stat-card stat-glow-pink">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#127942;</span></div>
             <div class="stat-body">
               <span class="stat-label">Total Games</span>
               <span class="stat-value" id="dash-total-games">--</span>
             </div>
           </div>
-          <div class="stat-card">
-            <span class="stat-icon">&#127775;</span>
+          <div class="stat-card stat-glow-emerald">
+            <div class="stat-icon-wrap"><span class="stat-icon">&#127775;</span></div>
             <div class="stat-body">
               <span class="stat-label">Win Rate</span>
               <span class="stat-value" id="dash-win-rate">--</span>
@@ -116,18 +148,20 @@
         </div>
 
         <div class="status-flags">
-          <span class="flag" id="flag-paused">PAUSED</span>
-          <span class="flag" id="flag-gpio-locked">GPIO LOCKED</span>
-          <span class="flag" id="flag-mock">MOCK GPIO</span>
+          <span class="flag" id="flag-paused"><span class="flag-dot flag-dot-orange"></span>PAUSED</span>
+          <span class="flag" id="flag-gpio-locked"><span class="flag-dot flag-dot-red"></span>GPIO LOCKED</span>
+          <span class="flag" id="flag-mock"><span class="flag-dot flag-dot-blue"></span>MOCK GPIO</span>
         </div>
 
         <div class="panel-row">
           <div class="panel-card">
+            <div class="panel-card-glow"></div>
             <h3>Active Player</h3>
-            <div id="dash-active-player" class="mono">None</div>
+            <div id="dash-active-player" class="active-player-name">None</div>
             <div id="dash-try-info" class="text-dim"></div>
           </div>
           <div class="panel-card">
+            <div class="panel-card-glow"></div>
             <h3>Recent Results</h3>
             <div id="dash-recent" class="recent-list">
               <p class="text-dim">Loading...</p>
@@ -136,40 +170,44 @@
         </div>
       </section>
 
-      <!-- Game Controls Section -->
+      <!-- ============================================================ -->
+      <!-- GAME CONTROLS                                                 -->
+      <!-- ============================================================ -->
       <section id="section-controls" class="section">
-        <h2>Game Controls</h2>
+        <div class="section-header">
+          <h2>Game Controls</h2>
+        </div>
         <p class="section-desc">Manage the claw machine state in real-time.</p>
         <div class="controls-grid">
-          <button id="ctrl-advance" class="control-btn btn-warning">
+          <button id="ctrl-advance" class="control-btn control-warning">
             <span class="ctrl-icon">&#9193;</span>
             <div>
               <span class="ctrl-label">Skip Player</span>
               <span class="ctrl-desc">Force-end the current player's turn</span>
             </div>
           </button>
-          <button id="ctrl-pause" class="control-btn btn-caution">
-            <span class="ctrl-icon">&#9208;</span>
+          <button id="ctrl-pause" class="control-btn control-caution">
+            <span class="ctrl-icon">&#9208;&#65039;</span>
             <div>
               <span class="ctrl-label">Pause Queue</span>
               <span class="ctrl-desc">Stop new players from starting</span>
             </div>
           </button>
-          <button id="ctrl-resume" class="control-btn btn-success">
-            <span class="ctrl-icon">&#9654;</span>
+          <button id="ctrl-resume" class="control-btn control-success">
+            <span class="ctrl-icon">&#9654;&#65039;</span>
             <div>
               <span class="ctrl-label">Resume Queue</span>
               <span class="ctrl-desc">Allow queue to advance normally</span>
             </div>
           </button>
-          <button id="ctrl-estop" class="control-btn btn-danger">
+          <button id="ctrl-estop" class="control-btn control-danger">
             <span class="ctrl-icon">&#9940;</span>
             <div>
               <span class="ctrl-label">Emergency Stop</span>
               <span class="ctrl-desc">Lock all GPIO controls immediately</span>
             </div>
           </button>
-          <button id="ctrl-unlock" class="control-btn btn-primary">
+          <button id="ctrl-unlock" class="control-btn control-primary">
             <span class="ctrl-icon">&#128275;</span>
             <div>
               <span class="ctrl-label">Unlock GPIO</span>
@@ -180,57 +218,78 @@
         <div id="control-feedback" class="feedback hidden"></div>
       </section>
 
-      <!-- Queue Section -->
+      <!-- ============================================================ -->
+      <!-- QUEUE MANAGEMENT                                              -->
+      <!-- ============================================================ -->
       <section id="section-queue" class="section">
-        <h2>Queue Management</h2>
+        <div class="section-header">
+          <h2>Queue Management</h2>
+          <button id="refresh-queue" class="btn-sm btn-outline">Refresh</button>
+        </div>
         <p class="section-desc">View and manage players in the queue.</p>
-        <button id="refresh-queue" class="btn-sm btn-outline">Refresh</button>
-        <div id="queue-table-wrap">
-          <table id="queue-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>State</th>
-                <th>Position</th>
-                <th>Joined</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="queue-tbody">
-              <tr><td colspan="6" class="text-dim">Loading...</td></tr>
-            </tbody>
-          </table>
+        <div class="table-card">
+          <div class="table-card-glow"></div>
+          <div id="queue-table-wrap">
+            <table id="queue-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>State</th>
+                  <th>Position</th>
+                  <th>Joined</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="queue-tbody">
+                <tr><td colspan="6" class="text-dim">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
-      <!-- Configuration Section -->
+      <!-- ============================================================ -->
+      <!-- CONFIGURATION                                                 -->
+      <!-- ============================================================ -->
       <section id="section-config" class="section">
-        <h2>Configuration</h2>
+        <div class="section-header">
+          <h2>Configuration</h2>
+        </div>
         <p class="section-desc">
           Edit server settings below. Changes are saved to the <code>.env</code> file.
-          Settings marked with <span class="restart-badge">restart</span> require a server restart.
+          Settings marked with <span class="restart-badge">restart</span> require a server restart to take effect.
         </p>
         <div id="config-filter-bar">
-          <input type="text" id="config-search" placeholder="Search settings...">
+          <div class="input-group input-group-search">
+            <span class="input-icon">&#128269;</span>
+            <input type="text" id="config-search" placeholder="Search settings...">
+          </div>
           <select id="config-category-filter">
             <option value="">All Categories</option>
           </select>
         </div>
         <div id="config-groups"></div>
         <div id="config-actions" class="hidden">
-          <span id="config-change-count">0 changes</span>
-          <button id="config-save-btn" class="btn-primary">Save Changes</button>
-          <button id="config-discard-btn" class="btn-ghost">Discard</button>
+          <div class="config-actions-inner">
+            <span id="config-change-count">0 changes</span>
+            <div class="config-actions-btns">
+              <button id="config-discard-btn" class="btn-ghost">Discard</button>
+              <button id="config-save-btn" class="action-btn-primary">Save Changes</button>
+            </div>
+          </div>
         </div>
         <div id="config-feedback" class="feedback hidden"></div>
       </section>
     </main>
   </div>
 
+  <!-- Mobile sidebar overlay -->
+  <div id="sidebar-overlay" class="hidden"></div>
+
   <!-- Toast container -->
   <div id="toast-container"></div>
 
-  <script src="admin.js?v=20260219"></script>
+  <script src="/admin.js?v=20260219b"></script>
 </body>
 </html>
