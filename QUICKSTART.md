@@ -78,6 +78,17 @@ curl -H "X-Admin-Key: changeme" http://localhost:8000/admin/dashboard | python3 
 
 Or open http://localhost:8000/api/docs for the interactive Swagger UI.
 
+### Step 6: Try the admin panel
+
+Open http://localhost:8000/admin/panel in your browser. Enter the admin API key (`changeme` by default) to sign in. The admin panel provides:
+
+- **Dashboard** — Live view of uptime, game state, viewers, queue size, win rate, active player
+- **Game Controls** — Skip player, pause/resume queue, emergency stop, unlock GPIO
+- **Queue Management** — View all players with IDs, kick individual players
+- **Configuration** — Edit any server setting in real time; changes are saved to `.env`
+
+For production, change the `ADMIN_API_KEY` in `.env` before sharing access.
+
 ---
 
 ## Raspberry Pi 5 Setup
@@ -256,7 +267,7 @@ Then restart: `sudo systemctl restart claw-server`
 ECLAW supports two streaming modes:
 
 1. **WebRTC via MediaMTX** (primary) — Low-latency WebRTC stream. Supports both Pi Camera modules and USB cameras. The setup script auto-detects which type is connected.
-2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/camera`. The camera auto-detects the correct `/dev/video*` device. This is useful for development or if MediaMTX has issues.
+2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/mjpeg`. The camera auto-detects the correct `/dev/video*` device. This is useful for development or if MediaMTX has issues.
 
 ### Pi Camera
 
@@ -320,6 +331,18 @@ curl http://localhost:8889/v3/paths/list
 The stream is available at:
 - WebRTC: http://\<pi-ip\>:8889/cam (direct MediaMTX)
 - Via nginx: http://\<pi-ip\>/stream/cam/whep (proxied, used by the UI)
+
+---
+
+## Custom Sound Effects
+
+ECLAW plays synthesized sound effects for game events (join, your-turn, drop, win, loss, etc.) using the Web Audio API. You can replace any sound with a custom audio file:
+
+1. Place audio files in the `web/sounds/` directory (or `/opt/claw/web/sounds/` on Pi)
+2. Name the file to match the event: `join`, `your-turn`, `ready`, `move`, `drop`, `dropping`, `win`, `loss`, `timer`, `next-try`
+3. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`
+
+Example: To use a custom win sound, place a file named `win.mp3` in `web/sounds/`. The engine checks for custom files on page load and falls back to synthesized sounds for any event without a custom file. Players can mute all sounds via a toggle in the UI.
 
 ---
 

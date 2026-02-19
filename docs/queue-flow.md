@@ -34,7 +34,7 @@ flowchart TB
     end
 
     subgraph Storage["Storage"]
-        DB[(SQLite + WAL<br/>queue_entries<br/>game_events)]
+        DB[(SQLite + WAL<br/>queue_entries<br/>game_events<br/>rate_limits)]
     end
 
     subgraph Hardware["Hardware (Raspberry Pi 5)"]
@@ -461,6 +461,7 @@ flowchart LR
             A3["keydown {key: north|south|east|west}"]
             A4["keyup {key: north|south|east|west}"]
             A5["drop_start"]
+            A7["drop_end"]
             A6["latency_ping"]
         end
         subgraph S2C["Server to Client"]
@@ -497,7 +498,7 @@ flowchart LR
 
 **Rate limiting:**
 - `keydown` events: max 25 Hz (40ms minimum interval)
-- `keyup`, `drop_start`, `ready_confirm`: no rate limit (always pass through)
+- `keyup`, `drop_start`, `drop_end`, `ready_confirm`: no rate limit (always pass through)
 - `latency_ping`: no rate limit (bypass)
 - Message size limit: 1024 bytes
 
@@ -551,6 +552,11 @@ flowchart LR
 | POST | `/admin/pause` | Pause queue advancement |
 | POST | `/admin/resume` | Resume queue advancement |
 | GET | `/admin/dashboard` | Full status dashboard (JSON) |
+| GET | `/admin/config` | All configuration values with metadata (JSON) |
+| PUT | `/admin/config` | Update config values; body: `{"changes": {"key": "value"}}` |
+| POST | `/admin/kick/{entry_id}` | Remove a specific player by entry ID |
+| GET | `/admin/queue-details` | Detailed queue entries with IDs, emails, IPs |
+| GET | `/admin/panel` | Web-based admin panel (HTML; no auth header — JS handles auth client-side) |
 
 ---
 
@@ -583,6 +589,12 @@ erDiagram
         TEXT created_at "ISO 8601"
     }
 
+    rate_limits {
+        INTEGER id PK "Auto-increment"
+        TEXT key "e.g. ip:1.2.3.4 or email:user@example.com"
+        TEXT ts "ISO 8601 timestamp (default: now)"
+    }
+
     schema_version {
         INTEGER version PK "Migration number"
     }
@@ -598,6 +610,8 @@ erDiagram
 | `idx_queue_position` | queue_entries | position | Partial: active/ready/waiting only |
 | `idx_events_entry` | game_events | queue_entry_id | Event lookups by player |
 | `idx_events_time` | game_events | created_at | Time-range queries for pruning |
+| `idx_queue_single_active` | queue_entries | state | Unique partial index: `WHERE state IN ('ready', 'active')` — ensures at most one active-like row |
+| `idx_rate_limits_key_ts` | rate_limits | key, ts | Composite index for rate limit lookups |
 
 ### Database Configuration
 
@@ -860,16 +874,24 @@ flowchart LR
         CTRL["controls.js<br/>ControlSocket class<br/>WebSocket lifecycle"]
         KB["keyboard.js<br/>WASD + arrows<br/>Space = drop"]
         TP["touch_dpad.js<br/>Mobile D-Pad<br/>Pointer events"]
-        STR["stream.js<br/>StreamPlayer class<br/>WebRTC + MJPEG fallback"]
+        STR["stream.js<br/>StreamPlayer class<br/>WebRTC streaming"]
+        SFX["sounds.js<br/>SoundEngine class<br/>Web Audio + custom files"]
+    end
+
+    subgraph AdminUI["admin.html (separate SPA)"]
+        ADJ["admin.js<br/>Dashboard, controls,<br/>queue mgmt, config editing"]
+        ADC["admin.css<br/>Admin panel styles"]
     end
 
     APP --> CTRL
     APP --> KB
     APP --> TP
     APP --> STR
+    APP --> SFX
     CTRL -->|WebSocket| Server
-    STR -->|WebRTC/MJPEG| MediaMTX
+    STR -->|WebRTC WHEP| MediaMTX
     APP -->|fetch| API
+    ADJ -->|fetch| API
 ```
 
 ### UI State Machine
@@ -888,11 +910,21 @@ null (join screen) --> waiting --> ready --> active --> done
 | `active` | Video + D-pad/keyboard + timer | WASD/touch + drop + leave | Status + Control | Move timer from `state_seconds_left` (accurate on reconnect) |
 | `done` | Result + play-again button | Play again | Status only | -- |
 
+### Admin Panel (`/admin/panel`)
+
+The admin panel (`admin.html` + `admin.js` + `admin.css`) is a separate single-page application that communicates with admin endpoints via `fetch()`. It stores the admin API key in `sessionStorage` and provides four sections:
+
+| Section | Features |
+|---------|----------|
+| **Dashboard** | Live uptime, game state, viewers, queue size, total games, win rate, active player, recent results, status flags (paused/GPIO locked/mock) |
+| **Game Controls** | Skip player, pause/resume queue, emergency stop, unlock GPIO |
+| **Queue Management** | Detailed player entries with IDs, state badges, kick individual players |
+| **Configuration** | Search/filter all server settings, edit values in real time, changes saved to `.env`, restart-required indicators |
+
 ### Reconnection Behavior
 
 | Component | Strategy | Backoff |
 |-----------|----------|---------|
 | Status WebSocket | Auto-reconnect on close | 3s to 30s (x1.5) |
 | Control WebSocket | Auto-reconnect on close | 1s to 10s (x2) |
-| WebRTC stream | Reconnect on ICE failure | 3s fixed, 10s for transient disconnect |
-| MJPEG fallback | Reconnect on img error | 3s fixed |
+| WebRTC stream | Reconnect on ICE failure or no frames after 10s | 1s to 30s (x2) |
