@@ -1,13 +1,132 @@
 """Admin REST API endpoints — require X-Admin-Key header."""
 
 import hmac
+import logging
 import time
+from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
-from app.config import settings
+from app.config import Settings, _resolve_env_file, settings
+
+_WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
 
 admin_router = APIRouter(prefix="/admin")
+_admin_logger = logging.getLogger("admin")
+
+# Metadata for config fields: category, label, description, whether restart is needed.
+# Fields not listed here still appear under "Other".
+_CONFIG_META: dict[str, dict[str, Any]] = {
+    # -- Timing --
+    "tries_per_player":          {"cat": "Timing",       "label": "Tries Per Player",           "desc": "Number of claw drop attempts each player gets per turn."},
+    "turn_time_seconds":         {"cat": "Timing",       "label": "Turn Time (seconds)",        "desc": "Hard time limit for an entire turn (all tries).", "restart": True},
+    "try_move_seconds":          {"cat": "Timing",       "label": "Move Time (seconds)",        "desc": "Time allowed to move the claw before auto-drop."},
+    "post_drop_wait_seconds":    {"cat": "Timing",       "label": "Post-Drop Wait (seconds)",   "desc": "Time to wait after drop for win sensor."},
+    "ready_prompt_seconds":      {"cat": "Timing",       "label": "Ready Prompt (seconds)",     "desc": "Time the player has to press Ready.", "restart": True},
+    "queue_grace_period_seconds":{"cat": "Timing",       "label": "Queue Grace Period (seconds)","desc": "Seconds before stale queue entries are cleaned on restart."},
+
+    # -- GPIO Pulse/Hold --
+    "coin_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Coin Pulse (ms)",         "desc": "Duration of the coin credit relay pulse."},
+    "drop_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Drop Pulse (ms)",         "desc": "Duration of the drop relay pulse."},
+    "drop_hold_max_ms":          {"cat": "GPIO Pulse/Hold", "label": "Drop Hold Max (ms)",      "desc": "Maximum time the drop relay can be held."},
+    "min_inter_pulse_ms":        {"cat": "GPIO Pulse/Hold", "label": "Min Inter-Pulse (ms)",    "desc": "Minimum gap between consecutive relay pulses."},
+    "direction_hold_max_ms":     {"cat": "GPIO Pulse/Hold", "label": "Direction Hold Max (ms)", "desc": "Maximum time a direction relay can be held."},
+    "coin_each_try":             {"cat": "GPIO Pulse/Hold", "label": "Coin Each Try",           "desc": "Credit a coin at the start of each try (vs. only the first)."},
+
+    # -- Control --
+    "command_rate_limit_hz":     {"cat": "Control",      "label": "Command Rate Limit (Hz)",    "desc": "Max player control commands per second."},
+    "direction_conflict_mode":   {"cat": "Control",      "label": "Direction Conflict Mode",    "desc": "How to handle opposing directions: ignore_new or replace.", "options": ["ignore_new", "replace"]},
+
+    # -- GPIO Pins --
+    "pin_coin":                  {"cat": "GPIO Pins",    "label": "PIN_COIN (BCM)",             "desc": "BCM pin number for the coin credit relay.", "restart": True},
+    "pin_north":                 {"cat": "GPIO Pins",    "label": "PIN_NORTH (BCM)",            "desc": "BCM pin number for north direction relay.", "restart": True},
+    "pin_south":                 {"cat": "GPIO Pins",    "label": "PIN_SOUTH (BCM)",            "desc": "BCM pin number for south direction relay.", "restart": True},
+    "pin_west":                  {"cat": "GPIO Pins",    "label": "PIN_WEST (BCM)",             "desc": "BCM pin number for west direction relay.", "restart": True},
+    "pin_east":                  {"cat": "GPIO Pins",    "label": "PIN_EAST (BCM)",             "desc": "BCM pin number for east direction relay.", "restart": True},
+    "pin_drop":                  {"cat": "GPIO Pins",    "label": "PIN_DROP (BCM)",             "desc": "BCM pin number for the drop relay.", "restart": True},
+    "pin_win":                   {"cat": "GPIO Pins",    "label": "PIN_WIN (BCM)",              "desc": "BCM pin number for win sensor input.", "restart": True},
+    "relay_active_low":          {"cat": "GPIO Pins",    "label": "Relay Active Low",           "desc": "Set true for active-low relay boards (most 8-channel boards).", "restart": True},
+
+    # -- Server --
+    "host":                      {"cat": "Server",       "label": "Host",                       "desc": "Listen address (0.0.0.0 for all interfaces).", "restart": True},
+    "port":                      {"cat": "Server",       "label": "Port",                       "desc": "Listen port.", "restart": True},
+    "database_path":             {"cat": "Server",       "label": "Database Path",              "desc": "Path to the SQLite database file.", "restart": True},
+    "admin_api_key":             {"cat": "Server",       "label": "Admin API Key",              "desc": "Secret key for admin endpoints. Change from default!", "sensitive": True},
+    "cors_allowed_origins":      {"cat": "Server",       "label": "CORS Allowed Origins",       "desc": "Comma-separated list of allowed browser origins.", "restart": True},
+    "mock_gpio":                 {"cat": "Server",       "label": "Mock GPIO",                  "desc": "Use mock GPIO (no real hardware). Set false for Pi 5.", "restart": True},
+
+    # -- Watchdog --
+    "watchdog_health_url":       {"cat": "Watchdog",     "label": "Health URL",                 "desc": "URL the watchdog pings for health checks."},
+    "watchdog_check_interval_s": {"cat": "Watchdog",     "label": "Check Interval (seconds)",   "desc": "Seconds between watchdog health checks."},
+    "watchdog_fail_threshold":   {"cat": "Watchdog",     "label": "Fail Threshold",             "desc": "Consecutive failures before watchdog intervenes."},
+
+    # -- Stream --
+    "mediamtx_health_url":       {"cat": "Stream",       "label": "MediaMTX Health URL",        "desc": "URL to check MediaMTX streaming health."},
+    "camera_device":             {"cat": "Stream",       "label": "Camera Device Index",        "desc": "/dev/videoN index for the built-in MJPEG camera.", "restart": True},
+    "camera_rtsp_url":           {"cat": "Stream",       "label": "Camera RTSP URL",            "desc": "RTSP fallback URL when device is locked by MediaMTX.", "restart": True},
+
+    # -- DB Maintenance --
+    "db_retention_hours":        {"cat": "Database",     "label": "Retention (hours)",           "desc": "Hours to keep completed entries before pruning."},
+
+    # -- WebSocket Limits --
+    "max_status_viewers":        {"cat": "WebSocket",    "label": "Max Status Viewers",         "desc": "Maximum concurrent WebSocket status viewers."},
+    "status_send_timeout_s":     {"cat": "WebSocket",    "label": "Status Send Timeout (s)",    "desc": "Per-client send timeout for status broadcasts."},
+    "status_keepalive_interval_s":{"cat": "WebSocket",   "label": "Status Keepalive (s)",       "desc": "Seconds between keepalive pings for viewers."},
+    "max_control_connections":   {"cat": "WebSocket",    "label": "Max Control Connections",    "desc": "Maximum concurrent player control channels."},
+    "control_send_timeout_s":    {"cat": "WebSocket",    "label": "Control Send Timeout (s)",   "desc": "Per-client send timeout for control messages."},
+    "control_ping_interval_s":   {"cat": "WebSocket",    "label": "Control Ping Interval (s)",  "desc": "Seconds between pings on control channels."},
+    "control_liveness_timeout_s":{"cat": "WebSocket",    "label": "Control Liveness Timeout (s)","desc": "Seconds before an unresponsive player is disconnected."},
+    "control_auth_timeout_s":    {"cat": "WebSocket",    "label": "Control Auth Timeout (s)",   "desc": "Seconds to wait for auth after WS connect."},
+    "control_max_message_bytes": {"cat": "WebSocket",    "label": "Control Max Message (bytes)","desc": "Maximum size of a single control message."},
+
+    # -- MJPEG / Camera --
+    "max_mjpeg_streams":         {"cat": "Camera",       "label": "Max MJPEG Streams",          "desc": "Maximum concurrent MJPEG fallback streams."},
+    "mjpeg_fps":                 {"cat": "Camera",       "label": "MJPEG FPS",                  "desc": "Frames per second for MJPEG stream."},
+    "camera_width":              {"cat": "Camera",       "label": "Camera Width (px)",          "desc": "Camera capture width in pixels.", "restart": True},
+    "camera_height":             {"cat": "Camera",       "label": "Camera Height (px)",         "desc": "Camera capture height in pixels.", "restart": True},
+    "camera_fps":                {"cat": "Camera",       "label": "Camera FPS",                 "desc": "Camera capture framerate.", "restart": True},
+    "camera_warmup_frames":      {"cat": "Camera",       "label": "Warmup Frames",              "desc": "Frames to discard on camera startup."},
+    "camera_max_consecutive_failures":{"cat": "Camera",  "label": "Max Consecutive Failures",   "desc": "Camera failures before giving up."},
+    "camera_jpeg_quality":       {"cat": "Camera",       "label": "JPEG Quality",               "desc": "JPEG encoding quality (0-100)."},
+
+    # -- Rate Limiting --
+    "rate_limit_window_s":       {"cat": "Rate Limiting","label": "Rate Window (seconds)",      "desc": "Time window for rate limit counters."},
+    "rate_limit_sweep_interval_s":{"cat": "Rate Limiting","label": "Sweep Interval (seconds)",  "desc": "How often stale rate limit entries are cleaned."},
+    "join_rate_per_ip":          {"cat": "Rate Limiting","label": "Joins Per IP (per window)",  "desc": "Max queue joins per IP per rate window."},
+    "join_rate_per_email":       {"cat": "Rate Limiting","label": "Joins Per Email (per window)","desc": "Max queue joins per email per rate window."},
+    "health_check_timeout_s":    {"cat": "Rate Limiting","label": "Health Check Timeout (s)",   "desc": "Timeout for internal health check requests."},
+    "history_limit":             {"cat": "Rate Limiting","label": "History Limit",              "desc": "Max number of recent game results to return."},
+
+    # -- Database Tuning --
+    "db_busy_timeout_ms":        {"cat": "Database",     "label": "Busy Timeout (ms)",          "desc": "SQLite busy timeout in milliseconds.", "restart": True},
+
+    # -- Background Tasks --
+    "db_prune_interval_s":       {"cat": "Background",   "label": "DB Prune Interval (s)",      "desc": "Seconds between automatic DB prune runs."},
+    "rate_limit_prune_age_s":    {"cat": "Background",   "label": "Rate Limit Prune Age (s)",   "desc": "Age in seconds after which rate limit entries are pruned."},
+    "queue_check_interval_s":    {"cat": "Background",   "label": "Queue Check Interval (s)",   "desc": "Seconds between periodic queue safety checks."},
+
+    # -- State Machine Internals --
+    "ghost_player_age_s":        {"cat": "State Machine","label": "Ghost Player Age (s)",       "desc": "Seconds before a ghost player entry is cleaned up."},
+    "coin_post_pulse_delay_s":   {"cat": "State Machine","label": "Coin Post-Pulse Delay (s)",  "desc": "Delay after coin pulse before proceeding."},
+    "emergency_stop_timeout_s":  {"cat": "State Machine","label": "E-Stop Timeout (s)",         "desc": "Timeout for emergency stop GPIO operations."},
+    "turn_end_stuck_timeout_s":  {"cat": "State Machine","label": "Turn End Stuck Timeout (s)", "desc": "Seconds before a stuck TURN_END state is force-recovered."},
+
+    # -- GPIO Executor Timeouts --
+    "gpio_op_timeout_s":         {"cat": "GPIO Timeouts","label": "GPIO Op Timeout (s)",        "desc": "Timeout for normal GPIO operations.", "restart": True},
+    "gpio_pulse_timeout_s":      {"cat": "GPIO Timeouts","label": "GPIO Pulse Timeout (s)",     "desc": "Timeout for GPIO pulse operations.", "restart": True},
+    "gpio_init_timeout_s":       {"cat": "GPIO Timeouts","label": "GPIO Init Timeout (s)",      "desc": "Timeout for GPIO initialization.", "restart": True},
+}
+
+
+@admin_router.get("/panel", response_class=HTMLResponse, include_in_schema=False)
+async def admin_panel_page():
+    """Serve the admin panel HTML page (no auth — page handles auth via JS)."""
+    html_path = _WEB_DIR / "admin.html"
+    if not html_path.exists():
+        raise HTTPException(404, "Admin panel not found")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
 def require_admin(x_admin_key: str = Header(...)):
@@ -94,5 +213,220 @@ async def admin_dashboard(request: Request):
                 "completed_at": r["completed_at"],
             }
             for r in recent
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Configuration management endpoints
+# ---------------------------------------------------------------------------
+
+def _get_field_type(field_name: str) -> str:
+    """Return the JSON-friendly type string for a Settings field."""
+    field_info = Settings.model_fields.get(field_name)
+    if not field_info:
+        return "string"
+    annotation = field_info.annotation
+    if annotation is bool:
+        return "boolean"
+    if annotation is int:
+        return "integer"
+    if annotation is float:
+        return "number"
+    return "string"
+
+
+@admin_router.get("/config", dependencies=[Depends(require_admin)])
+async def admin_get_config():
+    """Return all configuration values with metadata for the admin UI."""
+    fields = []
+    for name, field_info in Settings.model_fields.items():
+        meta = _CONFIG_META.get(name, {})
+        value = getattr(settings, name)
+        # Mask sensitive fields
+        if meta.get("sensitive") and value:
+            display_value = value
+        else:
+            display_value = value
+
+        field_data = {
+            "key": name,
+            "env_key": name.upper(),
+            "value": display_value,
+            "default": field_info.default,
+            "type": _get_field_type(name),
+            "category": meta.get("cat", "Other"),
+            "label": meta.get("label", name.replace("_", " ").title()),
+            "description": meta.get("desc", ""),
+            "restart_required": meta.get("restart", False),
+        }
+        if "options" in meta:
+            field_data["options"] = meta["options"]
+        fields.append(field_data)
+
+    return {"fields": fields}
+
+
+@admin_router.put("/config", dependencies=[Depends(require_admin)])
+async def admin_update_config(request: Request):
+    """Update configuration values and persist to .env file.
+
+    Accepts a JSON body: {"changes": {"KEY": "value", ...}}
+    Values are written to the .env file. Settings that can be applied
+    at runtime are updated immediately; others are flagged as needing
+    a restart.
+    """
+    body = await request.json()
+    changes: dict[str, Any] = body.get("changes", {})
+    if not changes:
+        raise HTTPException(400, "No changes provided")
+
+    # Validate keys exist in Settings
+    valid_keys = set(Settings.model_fields.keys())
+    invalid = [k for k in changes if k not in valid_keys]
+    if invalid:
+        raise HTTPException(400, f"Unknown config keys: {', '.join(invalid)}")
+
+    # Validate and coerce types
+    coerced: dict[str, Any] = {}
+    for key, raw_value in changes.items():
+        field_type = _get_field_type(key)
+        try:
+            if field_type == "boolean":
+                if isinstance(raw_value, bool):
+                    coerced[key] = raw_value
+                elif isinstance(raw_value, str):
+                    coerced[key] = raw_value.lower() in ("true", "1", "yes")
+                else:
+                    coerced[key] = bool(raw_value)
+            elif field_type == "integer":
+                coerced[key] = int(raw_value)
+            elif field_type == "number":
+                coerced[key] = float(raw_value)
+            else:
+                coerced[key] = str(raw_value)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, f"Invalid value for {key}: {e}")
+
+    # Write changes to .env file
+    env_path = _resolve_env_file()
+    _write_env_changes(env_path, coerced)
+
+    # Apply runtime changes where possible
+    restart_needed = []
+    applied = []
+    for key, value in coerced.items():
+        meta = _CONFIG_META.get(key, {})
+        # Update the live settings object
+        try:
+            object.__setattr__(settings, key, value)
+            # Clear cached_property if cors_allowed_origins changed
+            if key == "cors_allowed_origins" and "cors_origins" in settings.__dict__:
+                del settings.__dict__["cors_origins"]
+        except Exception:
+            pass
+
+        if meta.get("restart"):
+            restart_needed.append(key)
+        else:
+            applied.append(key)
+
+    _admin_logger.info(
+        "Config updated via admin panel: applied=%s, restart_needed=%s",
+        applied, restart_needed,
+    )
+
+    return {
+        "ok": True,
+        "applied": applied,
+        "restart_needed": restart_needed,
+        "message": (
+            "All changes saved to .env. "
+            + (f"{len(applied)} setting(s) applied immediately. " if applied else "")
+            + (f"{len(restart_needed)} setting(s) require a server restart to take effect." if restart_needed else "")
+        ),
+    }
+
+
+def _write_env_changes(env_path, changes: dict[str, Any]):
+    """Merge changes into the .env file, preserving comments and order."""
+    lines = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    # Track which keys we've updated
+    updated_keys = set()
+    new_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        # Skip empty lines and comments — keep as-is
+        if not stripped or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+
+        # Parse KEY=VALUE
+        if "=" in stripped:
+            env_key = stripped.split("=", 1)[0].strip()
+            setting_key = env_key.lower()
+            if setting_key in changes:
+                value = changes[setting_key]
+                # Format booleans as lowercase
+                if isinstance(value, bool):
+                    value = "true" if value else "false"
+                new_lines.append(f"{env_key}={value}\n")
+                updated_keys.add(setting_key)
+                continue
+
+        new_lines.append(line)
+
+    # Append any new keys that weren't in the file
+    for key, value in changes.items():
+        if key not in updated_keys:
+            env_key = key.upper()
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            new_lines.append(f"{env_key}={value}\n")
+
+    env_path.write_text("".join(new_lines), encoding="utf-8")
+
+
+@admin_router.post("/kick/{entry_id}", dependencies=[Depends(require_admin)])
+async def admin_kick_player(entry_id: int, request: Request):
+    """Remove a player from the queue by entry ID."""
+    qm = request.app.state.queue_manager
+    sm = request.app.state.state_machine
+
+    entry = await qm.get_by_id(entry_id)
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+
+    if entry["state"] in ("active", "ready"):
+        # Force end the active player's turn
+        if sm.active_entry_id == entry_id:
+            await sm.force_end_turn("admin_skipped")
+    elif entry["state"] == "waiting":
+        await qm.complete_entry(entry_id, "admin_skipped", 0)
+
+    return {"ok": True, "name": entry["name"], "previous_state": entry["state"]}
+
+
+@admin_router.get("/queue-details", dependencies=[Depends(require_admin)])
+async def admin_queue_details(request: Request):
+    """Return detailed queue entries including IDs for admin actions."""
+    qm = request.app.state.queue_manager
+    entries = await qm.list_queue()
+    return {
+        "entries": [
+            {
+                "id": e["id"],
+                "name": e["name"],
+                "email": e.get("email", ""),
+                "state": e["state"],
+                "position": e["position"],
+                "ip_address": e.get("ip_address", ""),
+                "created_at": e["created_at"],
+            }
+            for e in entries
         ],
     }

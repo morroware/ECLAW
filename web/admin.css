@@ -1,0 +1,1071 @@
+/* ==========================================================================
+   ECLAW Admin Panel — Styles
+   Matches the main game's dark arcade aesthetic
+   ========================================================================== */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg:             #0a0a0f;
+  --bg-subtle:      #0e0e18;
+  --surface:        #12101f;
+  --surface-2:      #1a1730;
+  --surface-3:      #221e3a;
+  --glass-border:   rgba(255, 255, 255, 0.08);
+
+  --primary:        #8b5cf6;
+  --primary-bright: #a78bfa;
+  --primary-dim:    rgba(139, 92, 246, 0.15);
+  --primary-glow:   rgba(139, 92, 246, 0.4);
+
+  --accent:         #f59e0b;
+  --accent-glow:    rgba(245, 158, 11, 0.35);
+
+  --success:        #10b981;
+  --success-bright: #34d399;
+  --danger:         #ef4444;
+  --danger-bright:  #f87171;
+  --warning:        #f59e0b;
+  --caution:        #f97316;
+  --info:           #3b82f6;
+
+  --text:           #f0f0f5;
+  --text-dim:       #9ca3af;
+  --text-muted:     #6b7280;
+
+  --border:         rgba(255, 255, 255, 0.06);
+  --radius:         10px;
+  --radius-lg:      14px;
+  --transition:     0.2s ease;
+
+  --font-body:      'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display:   'Orbitron', 'Inter', sans-serif;
+
+  --sidebar-w:      240px;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+.hidden { display: none !important; }
+
+.text-dim { color: var(--text-dim); font-size: 0.85rem; }
+.mono { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; }
+
+code {
+  background: rgba(255,255,255,0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ==========================================================================
+   LOGIN SCREEN
+   ========================================================================== */
+
+#login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(139, 92, 246, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 70%, rgba(34, 211, 238, 0.05) 0%, transparent 50%),
+    var(--bg);
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 40px 32px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.login-header h1 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--primary-bright);
+  margin-bottom: 6px;
+}
+
+.login-header p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#login-form input {
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+#login-form input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-dim);
+}
+
+#login-btn {
+  padding: 12px;
+  background: linear-gradient(135deg, var(--primary), #6d28d9);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+}
+
+#login-btn:hover {
+  background: linear-gradient(135deg, var(--primary-bright), #7c3aed);
+  box-shadow: 0 4px 20px var(--primary-glow);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* ==========================================================================
+   ADMIN LAYOUT — Sidebar + Content
+   ========================================================================== */
+
+#admin-panel {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* -- Sidebar --------------------------------------------------------------- */
+
+#sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.sidebar-icon {
+  font-size: 1.4rem;
+}
+
+.sidebar-title {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--accent);
+  display: block;
+  line-height: 1.2;
+}
+
+.sidebar-sub {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  font-weight: 500;
+}
+
+.nav-links {
+  list-style: none;
+  flex: 1;
+  padding: 8px 0;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: all var(--transition);
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.03);
+}
+
+.nav-link.active {
+  color: var(--primary-bright);
+  background: var(--primary-dim);
+  border-left-color: var(--primary);
+  font-weight: 600;
+}
+
+.nav-icon {
+  font-size: 1rem;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* -- Mobile Header --------------------------------------------------------- */
+
+#mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.mobile-title {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+#menu-toggle {
+  background: none;
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  font-size: 1.2rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* -- Main Content ---------------------------------------------------------- */
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  min-width: 0;
+}
+
+.section {
+  display: none;
+}
+
+.section.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.section h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.section-desc {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   DASHBOARD
+   ========================================================================== */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stat-card {
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color var(--transition);
+}
+
+.stat-card:hover {
+  border-color: rgba(255,255,255,0.12);
+}
+
+.stat-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status flags */
+.status-flags {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.flag {
+  display: none;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.flag.visible {
+  display: inline-flex;
+}
+
+#flag-paused {
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--caution);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+#flag-gpio-locked {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+#flag-mock {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--info);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.panel-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.panel-card {
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.panel-card h3 {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.recent-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 3px 0;
+}
+
+.recent-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.badge-win {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.badge-loss {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.recent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-time {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   GAME CONTROLS
+   ========================================================================== */
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.control-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: left;
+  font-family: var(--font-body);
+}
+
+.control-btn:hover {
+  border-color: rgba(255,255,255,0.15);
+  background: var(--surface-3);
+}
+
+.control-btn:active {
+  transform: scale(0.98);
+}
+
+.ctrl-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.ctrl-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 2px;
+}
+
+.ctrl-desc {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.btn-danger:hover     { border-color: var(--danger); background: rgba(239, 68, 68, 0.08); }
+.btn-success:hover    { border-color: var(--success); background: rgba(16, 185, 129, 0.08); }
+.btn-warning:hover    { border-color: var(--warning); background: rgba(245, 158, 11, 0.08); }
+.btn-caution:hover    { border-color: var(--caution); background: rgba(249, 115, 22, 0.08); }
+.btn-primary:hover    { border-color: var(--primary); background: rgba(139, 92, 246, 0.08); }
+
+.feedback {
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  margin-top: 12px;
+  animation: fadeIn 0.3s ease;
+}
+
+.feedback.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--success-bright);
+}
+
+.feedback.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger-bright);
+}
+
+/* ==========================================================================
+   QUEUE TABLE
+   ========================================================================== */
+
+#queue-table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+#queue-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#queue-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+#queue-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+  vertical-align: middle;
+}
+
+#queue-table tbody tr:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.state-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.state-badge.active  { background: rgba(139, 92, 246, 0.2); color: var(--primary-bright); }
+.state-badge.ready   { background: rgba(16, 185, 129, 0.2);  color: var(--success); }
+.state-badge.waiting { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+.kick-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: var(--danger);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-body);
+  min-height: auto;
+}
+
+.kick-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--danger);
+}
+
+/* ==========================================================================
+   CONFIGURATION
+   ========================================================================== */
+
+#config-filter-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+#config-search {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#config-search:focus {
+  border-color: var(--primary);
+}
+
+#config-search::placeholder {
+  color: var(--text-muted);
+}
+
+#config-category-filter {
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  outline: none;
+  cursor: pointer;
+  min-width: 160px;
+}
+
+#config-category-filter option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.config-group {
+  margin-bottom: 24px;
+}
+
+.config-group-header {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--primary-bright);
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--primary-dim);
+}
+
+.config-field {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 16px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-field:last-child {
+  border-bottom: none;
+}
+
+.config-field.changed {
+  background: rgba(139, 92, 246, 0.04);
+  margin: 0 -8px;
+  padding: 12px 8px;
+  border-radius: 6px;
+}
+
+.field-info {
+  min-width: 0;
+}
+
+.field-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field-env-key {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.field-desc {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.restart-badge {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--caution);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  vertical-align: middle;
+}
+
+.field-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-input-wrap input,
+.field-input-wrap select {
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.field-input-wrap input:focus,
+.field-input-wrap select:focus {
+  border-color: var(--primary);
+}
+
+.field-input-wrap input.modified {
+  border-color: var(--primary);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.field-default {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Toggle switch for booleans */
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle.on {
+  background: var(--primary);
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.toggle.on::after {
+  transform: translateX(20px);
+}
+
+.toggle-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+/* Config save bar */
+#config-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  margin: 20px -32px -24px;
+  background: var(--surface);
+  border-top: 1px solid var(--glass-border);
+  z-index: 10;
+}
+
+#config-change-count {
+  font-size: 0.85rem;
+  color: var(--primary-bright);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
+.btn-sm {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-body);
+  min-height: auto;
+}
+
+.btn-sm:hover {
+  color: var(--text);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.btn-outline {
+  border-color: var(--primary-dim);
+  color: var(--primary-bright);
+}
+
+.btn-outline:hover {
+  background: var(--primary-dim);
+}
+
+.btn-ghost {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  display: block;
+  font-family: var(--font-body);
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.03);
+}
+
+button.btn-primary,
+#config-actions .btn-primary {
+  padding: 8px 20px;
+  background: linear-gradient(135deg, var(--primary), #6d28d9);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+}
+
+button.btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-bright), #7c3aed);
+  box-shadow: 0 4px 16px var(--primary-glow);
+}
+
+/* ==========================================================================
+   TOAST NOTIFICATIONS
+   ========================================================================== */
+
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 3.7s forwards;
+  max-width: 400px;
+}
+
+.toast.toast-success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--success-bright);
+}
+
+.toast.toast-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger-bright);
+}
+
+.toast.toast-info {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateY(10px); }
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (max-width: 860px) {
+  #sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    transition: left 0.3s ease;
+    box-shadow: none;
+  }
+
+  #sidebar.open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+
+  #mobile-header {
+    display: flex;
+  }
+
+  #admin-panel {
+    flex-direction: column;
+  }
+
+  #content {
+    padding: 16px;
+  }
+
+  .config-field {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .panel-row {
+    grid-template-columns: 1fr;
+  }
+
+  #config-actions {
+    margin: 20px -16px -16px;
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 500px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #queue-table th:nth-child(5),
+  #queue-table td:nth-child(5) {
+    display: none;
+  }
+}
