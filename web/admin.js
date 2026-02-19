@@ -151,6 +151,7 @@
     if (adminPanel) adminPanel.classList.remove("hidden");
     setConnectionStatus(true);
     refreshDashboard();
+    if (dashboardInterval) clearInterval(dashboardInterval);
     dashboardInterval = setInterval(refreshDashboard, 4000);
     loadConfig();
     loadQueue();

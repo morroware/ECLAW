@@ -107,6 +107,26 @@
   fetchQueueList();
   fetchHistory();
 
+  // -- Page Lifecycle (bfcache support) -------------------------------------
+  // When navigating away, tear down the WHEP session cleanly so MediaMTX
+  // releases resources.  When returning from bfcache, reinitialize.
+  window.addEventListener("pagehide", () => {
+    if (streamPlayer) streamPlayer.disconnect();
+    if (statusWs) {
+      statusWs.close();
+      statusWs = null;
+    }
+    clearInterval(_latencyInterval);
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      // Page was restored from bfcache — reconnect everything
+      initStream();
+      connectStatusWs();
+    }
+  });
+
   // -- Status WebSocket (all viewers) ---------------------------------------
 
   function connectStatusWs() {
@@ -255,8 +275,9 @@
       return;
     }
 
+    let waitingPos = 0;
     queueList.innerHTML = entries
-      .map((entry, i) => {
+      .map((entry) => {
         let stateLabel = "";
         let stateClass = "";
         if (entry.state === "active") {
@@ -266,7 +287,8 @@
           stateLabel = "READY";
           stateClass = "state-ready";
         } else {
-          stateLabel = `#${i + 1}`;
+          waitingPos++;
+          stateLabel = `#${waitingPos}`;
           stateClass = "state-waiting";
         }
 
@@ -916,7 +938,7 @@
   }
 
   // -- Latency Display Update -----------------------------------------------
-  setInterval(() => {
+  let _latencyInterval = setInterval(() => {
     if (controlSocket && controlSocket.latencyMs) {
       latencyDisplay.textContent = `${Math.abs(controlSocket.latencyMs)}ms`;
       latencyDisplay.style.color = "";
