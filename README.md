@@ -157,11 +157,19 @@ Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/
 | POST | `/admin/pause` | Pause queue |
 | POST | `/admin/resume` | Resume queue |
 | GET | `/admin/dashboard` | Full status dashboard |
+| GET | `/admin/config` | All configuration values with metadata |
+| PUT | `/admin/config` | Update config values (persists to `.env`) |
+| POST | `/admin/kick/{entry_id}` | Remove a specific player from the queue |
+| GET | `/admin/queue-details` | Detailed queue entries with IDs for admin actions |
+
+### Admin Panel
+
+A web-based admin panel is available at `/admin/panel`. It provides a graphical interface for the dashboard, game controls (skip player, pause/resume, emergency stop), queue management (view details, kick players), and live configuration editing. Authentication is handled in the browser via the admin API key.
 
 ### WebSockets
 
 - `/ws/status` — Broadcast to all viewers (queue updates, state changes, keepalive pings)
-- `/ws/control` — Authenticated player channel (auth, controls, results)
+- `/ws/control` — Authenticated player channel (auth, controls including momentary drop via `drop_start`/`drop_end`, results)
 
 Interactive API docs available at `/api/docs` (Swagger UI).
 
@@ -265,6 +273,12 @@ ECLAW supports two streaming modes:
 
 ---
 
+## Audio Feedback
+
+ECLAW includes a `SoundEngine` (Web Audio API) that provides synthesized sound effects for game events: queue join, your-turn prompt, ready confirm, move, drop, dropping, win, loss, timer warning, and next-try. Custom audio files can be placed in the `web/sounds/` directory to override any synthesized sound. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`. See the comment header in `web/sounds.js` for file naming conventions. Sound can be muted by players via a toggle in the UI (persisted in `localStorage`).
+
+---
+
 ## Documentation
 
 - **[QUICKSTART.md](QUICKSTART.md)** — Step-by-step setup, wiring, camera configuration, and troubleshooting
@@ -292,7 +306,7 @@ ECLAW supports two streaming modes:
 
 ## Known Limitations
 
-- Rate limiting is in-memory (single process) — nginx handles edge rate limiting for production
+- Rate limiting uses both an in-memory fast-path cache and a persistent SQLite `rate_limits` table (surviving restarts) — nginx handles edge rate limiting for production
 - Frontend is vanilla JS with no build tooling (intentional simplicity)
 - Single uvicorn worker (required for GPIO ownership and shared state) — async handles concurrency
 - SQLite is the only supported database (sufficient for single-machine deployment)
