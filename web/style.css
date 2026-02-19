@@ -1572,7 +1572,7 @@ button:hover .btn-shine {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: none;
-    border-top: 1px solid var(--glass-border);
+    border-top: none;
   }
 
   /* History is secondary — hide on desktop to maximize video area */
