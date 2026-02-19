@@ -464,6 +464,7 @@ class StateMachine:
             async with self._sm_lock:
                 if self.state == TurnState.READY_PROMPT:
                     logger.info("Ready prompt timed out, skipping player")
+                    self._state_timer = None  # Prevent self-cancellation
                     await self._end_turn("skipped")
         except asyncio.CancelledError:
             pass
@@ -530,6 +531,7 @@ class StateMachine:
             async with self._sm_lock:
                 if self.state not in (TurnState.IDLE, TurnState.TURN_END):
                     logger.warning("Hard turn timeout reached")
+                    self._turn_timer = None  # Prevent self-cancellation
                     await self._end_turn("expired")
         except asyncio.CancelledError:
             pass
