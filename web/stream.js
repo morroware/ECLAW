@@ -182,6 +182,7 @@ class StreamPlayer {
     const delay = this._backoff;
     this._log("reconnecting in " + (delay / 1000) + "s...");
     setTimeout(() => {
+      this._reconnecting = false;
       this.disconnect();
       this._backoff = Math.min(this._backoff * 2, 30000);
       this.connect();
@@ -204,7 +205,7 @@ class StreamPlayer {
       this.pc = null;
     }
     if (this.sessionUrl) {
-      fetch(this.sessionUrl, { method: "DELETE" }).catch(() => {});
+      fetch(this.sessionUrl, { method: "DELETE", keepalive: true }).catch(() => {});
       this.sessionUrl = null;
     }
   }
