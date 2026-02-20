@@ -2,6 +2,8 @@
 
 import hmac
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -243,9 +245,10 @@ async def admin_get_config():
     for name, field_info in Settings.model_fields.items():
         meta = _CONFIG_META.get(name, {})
         value = getattr(settings, name)
-        # Mask sensitive fields
+        # Mask sensitive fields — don't leak secrets in API responses
         if meta.get("sensitive") and value:
-            display_value = value
+            sv = str(value)
+            display_value = ("*" * (len(sv) - 4) + sv[-4:]) if len(sv) > 4 else "****"
         else:
             display_value = value
 
@@ -308,6 +311,14 @@ async def admin_update_config(request: Request):
         except (ValueError, TypeError) as e:
             raise HTTPException(400, f"Invalid value for {key}: {e}")
 
+    # Reject values containing control characters (prevents .env injection)
+    for key, value in coerced.items():
+        if isinstance(value, str) and any(c in value for c in ("\n", "\r", "\x00")):
+            raise HTTPException(
+                400,
+                f"Invalid value for {key}: must not contain newlines or control characters",
+            )
+
     # Write changes to .env file
     env_path = _resolve_env_file()
     _write_env_changes(env_path, coerced)
@@ -349,7 +360,11 @@ async def admin_update_config(request: Request):
 
 
 def _write_env_changes(env_path, changes: dict[str, Any]):
-    """Merge changes into the .env file, preserving comments and order."""
+    """Merge changes into the .env file, preserving comments and order.
+
+    Uses atomic write (tempfile + os.replace) so a crash mid-write
+    cannot leave a corrupted .env file.
+    """
     lines = []
     if env_path.exists():
         lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -388,11 +403,36 @@ def _write_env_changes(env_path, changes: dict[str, Any]):
                 value = "true" if value else "false"
             new_lines.append(f"{env_key}={value}\n")
 
-    env_path.write_text("".join(new_lines), encoding="utf-8")
+    # Atomic write: write to temp file in the same directory, then rename.
+    # os.replace() is atomic on POSIX, so a crash during write leaves the
+    # original .env intact.
+    content = "".join(new_lines)
+    fd = None
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(env_path.parent), prefix=".env.tmp."
+        )
+        os.write(fd, content.encode("utf-8"))
+        os.close(fd)
+        fd = None  # Mark as closed
+        os.replace(tmp_path, str(env_path))
+    except Exception:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise
 
 
 @admin_router.post("/kick/{entry_id}", dependencies=[Depends(require_admin)])
-async def admin_kick_player(entry_id: int, request: Request):
+async def admin_kick_player(entry_id: str, request: Request):
     """Remove a player from the queue by entry ID."""
     qm = request.app.state.queue_manager
     sm = request.app.state.state_machine
@@ -401,10 +441,16 @@ async def admin_kick_player(entry_id: int, request: Request):
     if not entry:
         raise HTTPException(404, "Entry not found")
 
+    if entry["state"] in ("done", "cancelled"):
+        raise HTTPException(409, f"Entry already {entry['state']} — cannot kick")
+
     if entry["state"] in ("active", "ready"):
         # Force end the active player's turn
         if sm.active_entry_id == entry_id:
             await sm.force_end_turn("admin_skipped")
+        else:
+            # Ready but not the active entry (stale state) — complete directly
+            await qm.complete_entry(entry_id, "admin_skipped", 0)
     elif entry["state"] == "waiting":
         await qm.complete_entry(entry_id, "admin_skipped", 0)
 

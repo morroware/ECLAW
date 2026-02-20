@@ -1,13 +1,14 @@
 """Public REST API endpoints."""
 
 import asyncio
+import ipaddress
 import logging
 import re
 import time
 from collections import defaultdict
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.config import settings
 from app.database import hash_token
@@ -20,9 +21,20 @@ _NAME_UNSAFE = re.compile(r"[<>&\"']")
 
 # -- Models ------------------------------------------------------------------
 
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
+
+
 class JoinRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=50)
     email: str = Field(..., min_length=5, max_length=100)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_and_validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email format")
+        return v
 
 
 class JoinResponse(BaseModel):
@@ -91,11 +103,36 @@ logger = logging.getLogger("api.routes")
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract real client IP, respecting X-Forwarded-For behind a reverse proxy."""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """Extract real client IP, only trusting X-Forwarded-For from trusted proxies.
+
+    When ``settings.trusted_proxies`` is empty (the default), X-Forwarded-For is
+    ignored entirely — preventing spoofed headers from bypassing rate limits.
+    """
+    direct_ip = request.client.host if request.client else "unknown"
+
+    if not settings.trusted_proxies:
+        return direct_ip
+
+    # Check if the direct connection is from a trusted proxy
+    try:
+        client_addr = ipaddress.ip_address(direct_ip)
+    except ValueError:
+        return direct_ip
+
+    for cidr in settings.trusted_proxies.split(","):
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            if client_addr in ipaddress.ip_network(cidr, strict=False):
+                forwarded = request.headers.get("X-Forwarded-For", "")
+                if forwarded:
+                    return forwarded.split(",")[0].strip()
+                return direct_ip
+        except ValueError:
+            continue
+
+    return direct_ip
 
 
 def check_rate_limit(key: str, max_per_hour: int):
@@ -123,31 +160,25 @@ def check_rate_limit(key: str, max_per_hour: int):
 async def check_rate_limit_db(key: str, max_per_hour: int):
     """SQLite-backed rate limiter — durable across restarts.
 
-    Counts rows for ``key`` created within the last hour.  If the count
-    meets or exceeds ``max_per_hour``, raises HTTP 429.  Otherwise
-    inserts a new timestamp row.
+    Uses an atomic INSERT ... WHERE to check and record in a single
+    statement.  If the count already meets ``max_per_hour``, the INSERT
+    is a no-op (rowcount == 0) and we raise HTTP 429.
     """
     import app.database as _db_mod
     db = await _db_mod.get_db()
     _db_mod._ensure_locks()
 
     async with _db_mod._write_lock:
-        async with db.execute(
-            "SELECT COUNT(*) FROM rate_limits "
-            "WHERE key = ? AND ts > datetime('now', '-1 hour')",
-            (key,),
-        ) as cur:
-            row = await cur.fetchone()
-            count = row[0] if row else 0
-
-        if count >= max_per_hour:
-            raise HTTPException(429, "Rate limit exceeded. Try again later.")
-
-        await db.execute(
-            "INSERT INTO rate_limits (key) VALUES (?)",
-            (key,),
+        result = await db.execute(
+            "INSERT INTO rate_limits (key) "
+            "SELECT ? WHERE (SELECT COUNT(*) FROM rate_limits "
+            "WHERE key = ? AND ts > datetime('now', '-1 hour')) < ?",
+            (key, key, max_per_hour),
         )
         await db.commit()
+
+        if result.rowcount == 0:
+            raise HTTPException(429, "Rate limit exceeded. Try again later.")
 
 
 async def prune_rate_limits(max_age_seconds: int = 3600):
