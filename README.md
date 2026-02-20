@@ -74,7 +74,7 @@ app/                    FastAPI backend (API, game logic, GPIO, camera, WebSocke
   game/                 Queue manager + state machine
   gpio/                 GPIO controller (gpiozero wrapper)
   ws/                   WebSocket hubs (status broadcast + player control)
-  camera.py             Built-in USB camera capture (MJPEG fallback)
+  camera.py             Built-in camera capture with device + RTSP fallback (MJPEG)
 web/                    Browser UI (vanilla JS, no build step)
 watchdog/               Independent GPIO safety monitor
 migrations/             SQLite schema
@@ -94,7 +94,9 @@ QUICKSTART.md           Detailed setup, wiring, and deployment guide
 ```bash
 make help             # Show all commands
 make install          # Dev environment setup
+make install-prod     # Pi 5 production setup
 make run              # Dev server (mock GPIO, auto-reload)
+make run-prod         # Production server (localhost bind, 1 worker)
 make demo             # Demo mode (short timers, mock GPIO)
 make demo-pi          # Demo on Pi 5 (short timers, real GPIO)
 make test             # Run test suite
@@ -102,7 +104,10 @@ make simulate         # Simulate 3 players
 make status           # Health check
 make audit-internet   # Offline internet-readiness config audit
 make logs             # Tail server logs
+make logs-watchdog    # Tail watchdog logs
+make logs-all         # Tail all service logs
 make restart          # Restart all services
+make stop             # Stop game server + watchdog
 make db-reset         # Reset database
 ```
 
@@ -147,6 +152,8 @@ Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/
 | GET | `/api/session/me` | Your session state (Bearer token) |
 | GET | `/api/history` | Recent game results |
 | GET | `/api/health` | Server health status |
+| GET | `/api/stream/snapshot` | Single JPEG frame from built-in camera |
+| GET | `/api/stream/mjpeg` | MJPEG stream fallback (when built-in camera is available) |
 
 ### Admin Endpoints (require `X-Admin-Key` header)
 

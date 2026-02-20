@@ -267,7 +267,7 @@ Then restart: `sudo systemctl restart claw-server`
 ECLAW supports two streaming modes:
 
 1. **WebRTC via MediaMTX** (primary) — Low-latency WebRTC stream. Supports both Pi Camera modules and USB cameras. The setup script auto-detects which type is connected.
-2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/mjpeg`. The camera auto-detects the correct `/dev/video*` device. This is useful for development or if MediaMTX has issues.
+2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/mjpeg` plus snapshots at `/api/stream/snapshot`. The camera auto-detects the correct `/dev/video*` device and can fall back to RTSP input. This is useful for development or if MediaMTX has issues.
 
 ### Pi Camera
 
@@ -583,7 +583,9 @@ This means GPIO signals are reaching the board but the relay coils don't have en
 ```bash
 make help           # Show all available commands
 make install        # Set up dev environment
+make install-prod   # Set up Pi 5 production environment
 make run            # Start dev server (mock GPIO)
+make run-prod       # Start production server (localhost bind)
 make demo           # Start demo mode (short timers, mock GPIO)
 make demo-pi        # Start demo on Pi 5 (short timers, real GPIO)
 make test           # Run test suite
@@ -592,7 +594,10 @@ make status         # Health check
 make clean          # Remove cache + database
 make db-reset       # Reset the database
 make logs           # Tail game server logs
+make logs-watchdog  # Tail watchdog logs
+make logs-all       # Tail all service logs
 make restart        # Restart all services
+make stop           # Stop game server + watchdog
 ```
 
 ---
