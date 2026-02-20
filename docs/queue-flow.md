@@ -447,6 +447,28 @@ flowchart TB
 | nginx connection limit | Network edge | Single IP opening too many connections |
 | GPIO emergency stop | Admin/watchdog | Physical safety: all relays OFF immediately |
 
+#### Ghost Player Detection
+
+When `advance_queue()` picks the next waiting player, it checks whether the
+player has an active WebSocket connection.  Players who joined more than
+`GHOST_PLAYER_AGE_S` seconds ago (default: 30) and have no WebSocket
+connection are considered "ghosts" — they navigated away or closed their
+browser without explicitly leaving the queue.  Ghost players are immediately
+skipped with `result = skipped` and a `turn_end` + `queue_update` broadcast
+is sent so viewers see the queue update instantly.
+
+Players who joined very recently (within 30s) are given the normal
+`READY_PROMPT` flow because their WebSocket connection may still be
+establishing (e.g. slow network, page still loading JavaScript).
+
+Before checking ghost status, `advance_queue()` waits up to ~2 seconds
+(outside the state lock) for a WebSocket connection to appear, covering the
+common case where the player's browser is connecting at the moment their
+turn arrives.
+
+This prevents a queue full of disconnected players from stalling the game
+while each one waits through the full 15-second ready timeout.
+
 ---
 
 ## 8. WebSocket Message Reference
@@ -490,11 +512,13 @@ flowchart LR
 
 **Connection lifecycle:**
 1. Client opens WebSocket to `/ws/control`
-2. Client sends `auth` message within 10s (or gets disconnected)
-3. Server validates token hash against database
-4. Server responds with `auth_ok` (or `error` + close)
-5. If player is active, server also sends current `state_update`
-6. Client enters message loop until disconnect
+2. Server accepts the connection
+3. Client sends `auth` message within 2s (or gets disconnected)
+4. Server validates token hash against database
+5. Server acquires connection semaphore (rejects with 1013 if at capacity)
+6. Server responds with `auth_ok` (or `error` + close)
+7. If player is active, server also sends current `state_update`
+8. Client enters message loop until disconnect
 
 **Rate limiting:**
 - `keydown` events: max 25 Hz (40ms minimum interval)

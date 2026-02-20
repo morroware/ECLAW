@@ -139,6 +139,25 @@ async def _periodic_queue_check(sm, interval_seconds: int | None = None):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
+    # ---- Single-worker safety guard ----
+    # ECLAW requires single-worker mode because:
+    # - GPIO hardware can only have one owner process
+    # - StateMachine and rate limiters use in-memory state
+    # - asyncio.Lock in database.py only serialises within one process
+    # Multi-worker deployment would cause data corruption and GPIO conflicts.
+    web_concurrency = os.environ.get("WEB_CONCURRENCY", "1")
+    try:
+        if int(web_concurrency) > 1:
+            logger.critical(
+                "FATAL: WEB_CONCURRENCY=%s — ECLAW requires single-worker mode. "
+                "Multi-worker deployment will cause data corruption and GPIO "
+                "conflicts. Remove WEB_CONCURRENCY or set it to 1.",
+                web_concurrency,
+            )
+            raise SystemExit(1)
+    except ValueError:
+        pass  # Non-integer value, ignore
+
     from app.config import _resolve_env_file
     env_path = _resolve_env_file()
     logger.info(

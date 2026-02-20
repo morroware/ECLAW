@@ -407,6 +407,10 @@ TRUSTED_PROXIES=127.0.0.1/32,::1/128
 
 # Ensure real GPIO mode on Pi
 MOCK_GPIO=false
+
+# Auto-prune completed entries after this many hours (default: 48).
+# Set higher for multi-day events where you want full audit history.
+DB_RETENTION_HOURS=48
 ```
 
 Restart the server:

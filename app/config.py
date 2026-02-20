@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     control_ping_interval_s: int = 20
     control_liveness_timeout_s: int = 60
     control_auth_timeout_s: int = 10
+    control_pre_auth_timeout_s: float = 2.0
     control_max_message_bytes: int = 1024
 
     # -- MJPEG / Camera -------------------------------------------------------
@@ -147,6 +148,11 @@ class Settings(BaseSettings):
     gpio_op_timeout_s: float = 2.0
     gpio_pulse_timeout_s: float = 5.0
     gpio_init_timeout_s: float = 10.0
+
+    # -- GPIO executor circuit breaker ----------------------------------------
+
+    max_executor_replacements: int = 5
+    executor_replacement_window_s: int = 60
 
     model_config = {
         "env_file": str(_resolve_env_file()),
