@@ -167,6 +167,12 @@ class Settings(BaseSettings):
                 "Change it before exposing to the internet!",
                 self.admin_api_key,
             )
+        if not self.trusted_proxies:
+            _cfg_logger.info(
+                "TRUSTED_PROXIES is empty — X-Forwarded-For headers will be "
+                "ignored. Set TRUSTED_PROXIES if running behind a reverse proxy "
+                "(e.g. TRUSTED_PROXIES=127.0.0.1/32,::1/128)."
+            )
 
 
 settings = Settings()

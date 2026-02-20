@@ -82,9 +82,18 @@ fi
 
 host="$(get_env HOST || true)"
 if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || -z "$host" ]]; then
-  pass "HOST is loopback-only (expected when fronted by nginx)"
+  pass "HOST=$host (loopback-only, safe default)"
+elif [[ "$host" == "0.0.0.0" ]]; then
+  pass "HOST=0.0.0.0 (all interfaces — standard Pi deployment behind nginx + firewall)"
 else
-  warn "HOST is $host (ensure firewall and reverse-proxy rules are strict)"
+  warn "HOST=$host — non-standard bind address (ensure firewall and reverse-proxy rules are strict)"
+fi
+
+trusted="$(get_env TRUSTED_PROXIES || true)"
+if [[ -n "$trusted" ]]; then
+  pass "TRUSTED_PROXIES is set: $trusted"
+else
+  warn "TRUSTED_PROXIES is empty — X-Forwarded-For will be ignored for rate limiting"
 fi
 
 echo ""

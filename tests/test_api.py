@@ -264,3 +264,142 @@ async def test_leave_with_invalid_token(api_client):
         headers={"Authorization": "Bearer bogus-token-12345"},
     )
     assert res.status_code == 404
+
+
+# ===========================================================================
+# Proxy-IP / Rate-Limit Regression Tests
+# ===========================================================================
+
+
+@pytest.mark.anyio
+async def test_xff_ignored_when_trusted_proxies_empty(api_client):
+    """When TRUSTED_PROXIES is empty, X-Forwarded-For should be ignored
+    and rate limiting should use the direct client IP."""
+    import time as _time
+    import app.api.routes as routes_mod
+
+    original_tp = settings.trusted_proxies
+    settings.trusted_proxies = ""
+    routes_mod._proxy_header_warned = False
+    try:
+        # Pre-fill rate limit for the spoofed IP — should have NO effect
+        _join_limits["ip:10.99.99.99"] = [_time.time()] * 100
+
+        # Request with X-Forwarded-For pointing to the spoofed IP
+        res = await api_client.post(
+            "/api/queue/join",
+            json={"name": "ProxyTest", "email": "proxy1@example.com"},
+            headers={"X-Forwarded-For": "10.99.99.99"},
+        )
+        # Should succeed because rate limit is checked against direct IP
+        # (127.0.0.1), not the spoofed X-Forwarded-For IP
+        assert res.status_code == 200, (
+            f"Expected 200 but got {res.status_code}: XFF should be ignored "
+            f"when TRUSTED_PROXIES is empty"
+        )
+
+        token = res.json()["token"]
+        await asyncio.sleep(0.05)
+        await api_client.delete(
+            "/api/queue/leave",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        await asyncio.sleep(0.05)
+    finally:
+        settings.trusted_proxies = original_tp
+
+
+@pytest.mark.anyio
+async def test_xff_used_when_trusted_proxies_match(api_client):
+    """When TRUSTED_PROXIES matches the direct connection IP,
+    X-Forwarded-For SHOULD be used for rate limiting."""
+    import time as _time
+    import app.api.routes as routes_mod
+
+    original_tp = settings.trusted_proxies
+    # The test client connects from 127.0.0.1 (httpx ASGITransport default)
+    settings.trusted_proxies = "127.0.0.1/32"
+    routes_mod._proxy_header_warned = False
+    try:
+        # Pre-fill rate limit for the forwarded IP to just below the limit
+        forwarded_ip = "203.0.113.50"
+        _join_limits[f"ip:{forwarded_ip}"] = [_time.time()] * (settings.join_rate_per_ip - 1)
+
+        # This request should use the X-Forwarded-For IP for rate limiting
+        res = await api_client.post(
+            "/api/queue/join",
+            json={"name": "TrustedProxy", "email": "trusted1@example.com"},
+            headers={"X-Forwarded-For": forwarded_ip},
+        )
+        assert res.status_code == 200, (
+            f"Expected 200 but got {res.status_code}: should succeed (at limit - 1)"
+        )
+        token = res.json()["token"]
+        await asyncio.sleep(0.05)
+        await api_client.delete(
+            "/api/queue/leave",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        await asyncio.sleep(0.05)
+
+        # Now the forwarded IP should be at the limit — next request should be blocked
+        blocked = await api_client.post(
+            "/api/queue/join",
+            json={"name": "TrustedProxy2", "email": "trusted2@example.com"},
+            headers={"X-Forwarded-For": forwarded_ip},
+        )
+        assert blocked.status_code == 429, (
+            f"Expected 429 but got {blocked.status_code}: forwarded IP should be "
+            f"rate-limited when proxy is trusted"
+        )
+    finally:
+        settings.trusted_proxies = original_tp
+
+
+@pytest.mark.anyio
+async def test_different_xff_ips_get_independent_limits(api_client):
+    """Different X-Forwarded-For IPs should get independent rate limits
+    when the proxy is trusted."""
+    import time as _time
+    import app.api.routes as routes_mod
+
+    original_tp = settings.trusted_proxies
+    settings.trusted_proxies = "127.0.0.1/32"
+    routes_mod._proxy_header_warned = False
+    try:
+        ip_a = "198.51.100.10"
+        ip_b = "198.51.100.20"
+
+        # Exhaust rate limit for IP A
+        _join_limits[f"ip:{ip_a}"] = [_time.time()] * settings.join_rate_per_ip
+
+        # IP A should be blocked
+        res_a = await api_client.post(
+            "/api/queue/join",
+            json={"name": "PlayerA", "email": "a@example.com"},
+            headers={"X-Forwarded-For": ip_a},
+        )
+        assert res_a.status_code == 429, (
+            f"Expected 429 for IP A but got {res_a.status_code}"
+        )
+
+        # IP B should NOT be blocked (independent limit)
+        res_b = await api_client.post(
+            "/api/queue/join",
+            json={"name": "PlayerB", "email": "b@example.com"},
+            headers={"X-Forwarded-For": ip_b},
+        )
+        assert res_b.status_code == 200, (
+            f"Expected 200 for IP B but got {res_b.status_code}: "
+            f"different XFF IPs should have independent rate limits"
+        )
+
+        token = res_b.json()["token"]
+        await asyncio.sleep(0.05)
+        await api_client.delete(
+            "/api/queue/leave",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        await asyncio.sleep(0.05)
+    finally:
+        settings.trusted_proxies = original_tp

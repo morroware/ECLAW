@@ -402,6 +402,9 @@ ADMIN_API_KEY=your-strong-random-key-here
 # Set to your public domain (comma-separated if multiple)
 CORS_ALLOWED_ORIGINS=https://claw.yourdomain.com
 
+# Trust local nginx for X-Forwarded-For (required for rate limiting)
+TRUSTED_PROXIES=127.0.0.1/32,::1/128
+
 # Ensure real GPIO mode on Pi
 MOCK_GPIO=false
 ```
