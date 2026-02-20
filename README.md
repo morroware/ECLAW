@@ -124,6 +124,7 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 | `TRY_MOVE_SECONDS` | `30` | `30` | Time to move before auto-drop |
 | `TURN_TIME_SECONDS` | `90` | `90` | Hard limit for entire turn |
 | `ADMIN_API_KEY` | `changeme` | `changeme` | **Change this in production** |
+| `HOST` | `0.0.0.0` | `0.0.0.0` | Listen address. Use `127.0.0.1` in production behind nginx to prevent direct access. |
 | `PORT` | `8000` | `8000` | Server listen port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
 | `TRUSTED_PROXIES` | `""` (empty) | `127.0.0.1/32,::1/128` | Comma-separated CIDRs of trusted reverse proxies. `.env.example` assumes nginx on localhost; empty = ignore X-Forwarded-For (safe when not behind a proxy). |
