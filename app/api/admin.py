@@ -1,6 +1,8 @@
 """Admin REST API endpoints — require X-Admin-Key header."""
 
+import csv
 import hmac
+import io
 import logging
 import os
 import tempfile
@@ -9,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from app.config import Settings, _resolve_env_file, settings
+from app.database import get_db
 
 _WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
 
@@ -597,3 +600,27 @@ async def admin_queue_details(request: Request):
             for e in entries
         ],
     }
+
+
+@admin_router.get("/contacts/csv", dependencies=[Depends(require_admin)])
+async def admin_contacts_csv():
+    """Download all contacts as a CSV file."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT first_name, last_name, email FROM contacts ORDER BY created_at ASC"
+    ) as cur:
+        rows = await cur.fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["First Name", "Last Name", "Email", "SMS ON", "EMAIL ON"])
+    for row in rows:
+        writer.writerow([row[0], row[1], row[2], "Yes", "Yes"])
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="eclaw_contacts.csv"'
+        },
+    )
