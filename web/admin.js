@@ -440,6 +440,37 @@
     $("#refresh-queue").addEventListener("click", loadQueue);
   }
 
+  // -- Contacts CSV Download ------------------------------------------------
+
+  if ($("#download-contacts")) {
+    $("#download-contacts").addEventListener("click", async function () {
+      this.disabled = true;
+      try {
+        const res = await fetch("/admin/contacts/csv", {
+          headers: { "X-Admin-Key": adminKey },
+        });
+        if (!res.ok) {
+          toast("Failed to download contacts.", "error");
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "eclaw_contacts.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast("Contacts CSV downloaded.", "success");
+      } catch (e) {
+        toast("Failed to download contacts.", "error");
+      } finally {
+        this.disabled = false;
+      }
+    });
+  }
+
   // -- Configuration ----------------------------------------------------------
 
   async function loadConfig() {

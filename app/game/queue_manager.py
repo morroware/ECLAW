@@ -20,6 +20,11 @@ class QueueManager:
         raw_token = secrets.token_urlsafe(32)
         token_h = hash_token(raw_token)
 
+        # Split name into first/last for the permanent contacts table
+        parts = name.strip().split(None, 1)
+        first_name = parts[0] if parts else name
+        last_name = parts[1] if len(parts) > 1 else ""
+
         async with _db_mod._write_lock:
             # Prevent the same player from joining while already in the queue
             async with db.execute(
@@ -39,6 +44,18 @@ class QueueManager:
                                      WHERE state IN ('waiting', 'ready', 'active')), 0) + 1)""",
                 (entry_id, token_h, name, email, ip),
             )
+
+            # Persist contact for permanent CRM export (immune to prune)
+            await db.execute(
+                """INSERT INTO contacts (first_name, last_name, email, created_at, updated_at)
+                   VALUES (?, ?, ?, datetime('now'), datetime('now'))
+                   ON CONFLICT(email) DO UPDATE SET
+                       first_name = excluded.first_name,
+                       last_name = excluded.last_name,
+                       updated_at = datetime('now')""",
+                (first_name, last_name, email),
+            )
+
             await db.commit()
 
         # Read back the assigned position
