@@ -10,7 +10,6 @@ These tests exercise failure modes identified in the reliability audit:
 """
 
 import asyncio
-import json
 import os
 import time
 
@@ -19,9 +18,8 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 import app.database as db_module
-from app.config import Settings, settings
+from app.config import settings
 from app.database import close_db, get_db
-from app.game.queue_manager import QueueManager
 from app.game.state_machine import StateMachine, TurnState
 from app.gpio.controller import GPIOController
 from app.main import app
@@ -235,7 +233,7 @@ async def test_gpio_executor_timeout_replaces_executor():
     async def _block():
         await gpio._gpio_call(lambda: time.sleep(999), timeout=0.5)
 
-    result = await asyncio.wait_for(_block(), timeout=5.0)
+    await asyncio.wait_for(_block(), timeout=5.0)
 
     # Executor should have been replaced
     assert gpio._executor is not original_executor
@@ -458,7 +456,6 @@ async def test_ghost_player_skipped(api_client):
         json={"name": "Ghost", "email": "ghost@test.com"},
     )
     assert res.status_code == 200
-    token = res.json()["token"]
 
     # Small delay for state machine to process
     await asyncio.sleep(0.1)
@@ -743,3 +740,87 @@ async def test_rate_limiter_cleanup(fresh_db):
     ) as cur:
         row = await cur.fetchone()
         assert row[0] == 0
+
+
+# ===========================================================================
+# Test: keepalive ping send failure closes the socket
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_keepalive_ping_send_fail_closes_socket():
+    """When the keepalive ping send fails, the socket should be closed."""
+    ctrl = ControlHandler(None, _MockQueue(), _MockGPIO(), settings)
+
+    class _FailSendSocket:
+        closed = False
+        close_code = None
+
+        async def send_text(self, data):
+            raise ConnectionError("broken pipe")
+
+        async def close(self, code=1000, reason=""):
+            self.closed = True
+            self.close_code = code
+
+    ws = _FailSendSocket()
+    entry_id = "ping-fail-entry"
+    ctrl._player_ws[entry_id] = ws
+    ctrl._last_activity[entry_id] = time.monotonic()
+
+    # Run keepalive — it should attempt to send a ping, fail, close ws, then return
+    await ctrl._keepalive_ping(entry_id, ws)
+
+    assert ws.closed, "Socket should be closed after ping send failure"
+    assert ws.close_code == 1001
+
+
+# ===========================================================================
+# Test: admin kick waiting entry broadcasts queue update
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_admin_kick_waiting_broadcasts(api_client):
+    """Kicking a waiting player via admin should leave a consistent queue."""
+    client = api_client
+    admin_headers = {"X-Admin-Key": "changeme"}
+
+    # Join a player
+    resp = await client.post("/api/queue/join", json={"name": "KickMe", "email": "kickme@test.com"})
+    assert resp.status_code == 200
+
+    # Get entry ID via queue-details
+    resp = await client.get("/admin/queue-details", headers=admin_headers)
+    assert resp.status_code == 200
+    entries = resp.json()["entries"]
+    waiting = [e for e in entries if e["name"] == "KickMe" and e["state"] in ("waiting", "ready")]
+    assert len(waiting) >= 1
+    entry_id = waiting[0]["id"]
+
+    # Kick the player
+    resp = await client.post(f"/admin/kick/{entry_id}", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    # Queue should reflect the kick (player gone from active list)
+    resp = await client.get("/api/queue/status")
+    assert resp.status_code == 200
+    assert resp.json()["queue_length"] == 0
+
+
+# ===========================================================================
+# Test: health client cleanup
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_health_client_cleanup():
+    """close_health_http() should close the client and reset the global."""
+    import app.api.routes as routes_mod
+    from app.api.routes import close_health_http
+
+    # Force-create a client (don't actually make requests)
+    import httpx
+    routes_mod._health_http = httpx.AsyncClient(timeout=5)
+    assert routes_mod._health_http is not None
+
+    await close_health_http()
+    assert routes_mod._health_http is None

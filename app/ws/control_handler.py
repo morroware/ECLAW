@@ -235,6 +235,10 @@ class ControlHandler:
                     )
                 except (asyncio.TimeoutError, Exception):
                     logger.warning("Control keepalive: ping send failed for %s", entry_id)
+                    try:
+                        await ws.close(1001, "Ping send failed")
+                    except Exception:
+                        pass
                     return
         except asyncio.CancelledError:
             pass

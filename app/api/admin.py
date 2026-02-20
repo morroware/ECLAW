@@ -444,6 +444,8 @@ async def admin_kick_player(entry_id: str, request: Request):
     if entry["state"] in ("done", "cancelled"):
         raise HTTPException(409, f"Entry already {entry['state']} — cannot kick")
 
+    need_broadcast = False
+
     if entry["state"] in ("active", "ready"):
         # Force end the active player's turn
         if sm.active_entry_id == entry_id:
@@ -451,8 +453,26 @@ async def admin_kick_player(entry_id: str, request: Request):
         else:
             # Ready but not the active entry (stale state) — complete directly
             await qm.complete_entry(entry_id, "admin_skipped", 0)
+            need_broadcast = True
     elif entry["state"] == "waiting":
         await qm.complete_entry(entry_id, "admin_skipped", 0)
+        need_broadcast = True
+
+    if need_broadcast:
+        # Broadcast updated queue so viewer/admin dashboards stay in sync
+        status = await qm.get_queue_status()
+        entries = await qm.list_queue()
+        queue_entries = [
+            {"name": e["name"], "state": e["state"], "position": e["position"]}
+            for e in entries
+        ]
+        await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
+
+        # Advance queue in case a waiting player should now be promoted
+        try:
+            await sm.advance_queue()
+        except Exception:
+            _admin_logger.exception("advance_queue after kick failed")
 
     return {"ok": True, "name": entry["name"], "previous_state": entry["state"]}
 
