@@ -172,7 +172,7 @@ A web-based admin panel is available at `/admin/panel`. It provides a graphical 
 - `/ws/status` — Broadcast to all viewers (queue updates, state changes, keepalive pings)
 - `/ws/control` — Authenticated player channel (auth, controls including momentary drop via `drop_start`/`drop_end`, results)
 
-Interactive API docs available at `/api/docs` (Swagger UI).
+Interactive API docs available at `/api/docs` (Swagger UI) when running in dev/mock mode (`MOCK_GPIO=true`). Disabled in production for security.
 
 ---
 
