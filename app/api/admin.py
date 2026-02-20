@@ -73,10 +73,10 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "db_retention_hours":        {"cat": "Database",     "label": "Retention (hours)",           "desc": "Hours to keep completed entries before pruning."},
 
     # -- WebSocket Limits --
-    "max_status_viewers":        {"cat": "WebSocket",    "label": "Max Status Viewers",         "desc": "Maximum concurrent WebSocket status viewers."},
+    "max_status_viewers":        {"cat": "WebSocket",    "label": "Max Status Viewers",         "desc": "Maximum concurrent WebSocket status viewers. Takes effect on new connections; existing viewers are not disconnected."},
     "status_send_timeout_s":     {"cat": "WebSocket",    "label": "Status Send Timeout (s)",    "desc": "Per-client send timeout for status broadcasts."},
     "status_keepalive_interval_s":{"cat": "WebSocket",   "label": "Status Keepalive (s)",       "desc": "Seconds between keepalive pings for viewers."},
-    "max_control_connections":   {"cat": "WebSocket",    "label": "Max Control Connections",    "desc": "Maximum concurrent player control channels."},
+    "max_control_connections":   {"cat": "WebSocket",    "label": "Max Control Connections",    "desc": "Maximum concurrent player control channels. Requires restart to resize.", "restart": True},
     "control_send_timeout_s":    {"cat": "WebSocket",    "label": "Control Send Timeout (s)",   "desc": "Per-client send timeout for control messages."},
     "control_ping_interval_s":   {"cat": "WebSocket",    "label": "Control Ping Interval (s)",  "desc": "Seconds between pings on control channels."},
     "control_liveness_timeout_s":{"cat": "WebSocket",    "label": "Control Liveness Timeout (s)","desc": "Seconds before an unresponsive player is disconnected."},
@@ -84,7 +84,7 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "control_max_message_bytes": {"cat": "WebSocket",    "label": "Control Max Message (bytes)","desc": "Maximum size of a single control message."},
 
     # -- MJPEG / Camera --
-    "max_mjpeg_streams":         {"cat": "Camera",       "label": "Max MJPEG Streams",          "desc": "Maximum concurrent MJPEG fallback streams."},
+    "max_mjpeg_streams":         {"cat": "Camera",       "label": "Max MJPEG Streams",          "desc": "Maximum concurrent MJPEG fallback streams. Requires restart to resize.", "restart": True},
     "mjpeg_fps":                 {"cat": "Camera",       "label": "MJPEG FPS",                  "desc": "Frames per second for MJPEG stream."},
     "camera_width":              {"cat": "Camera",       "label": "Camera Width (px)",          "desc": "Camera capture width in pixels.", "restart": True},
     "camera_height":             {"cat": "Camera",       "label": "Camera Height (px)",         "desc": "Camera capture height in pixels.", "restart": True},
@@ -481,7 +481,7 @@ async def admin_kick_player(entry_id: str, request: Request):
 async def admin_queue_details(request: Request):
     """Return detailed queue entries including IDs for admin actions."""
     qm = request.app.state.queue_manager
-    entries = await qm.list_queue()
+    entries = await qm.list_queue_admin()
     return {
         "entries": [
             {

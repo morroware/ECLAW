@@ -253,8 +253,19 @@ async def ws_status(ws: WebSocket):
         try:
             while True:
                 await asyncio.sleep(settings.status_keepalive_interval_s)
-                await ws.send_text('{"type":"ping"}')
-        except Exception:
+                try:
+                    await asyncio.wait_for(
+                        ws.send_text('{"type":"ping"}'),
+                        timeout=settings.status_send_timeout_s,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    logger.warning("Status WS keepalive: ping send failed, closing")
+                    try:
+                        await ws.close(1001, "Keepalive send failed")
+                    except Exception:
+                        pass
+                    break
+        except asyncio.CancelledError:
             pass
 
     ping_task = asyncio.create_task(_keepalive())

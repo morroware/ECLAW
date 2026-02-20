@@ -24,17 +24,18 @@ class ControlHandler:
         self._last_command_time: dict[str, float] = {}  # entry_id -> monotonic
         self._grace_tasks: dict[str, asyncio.Task] = {}  # entry_id -> grace period task
         self._last_activity: dict[str, float] = {}  # entry_id -> monotonic (any msg)
-        self._total_connections: int = 0
+        self._conn_sem = asyncio.Semaphore(settings.max_control_connections)
 
     async def handle_connection(self, ws: WebSocket):
         """Handle a full control WebSocket lifecycle."""
-        if self._total_connections >= self.settings.max_control_connections:
+        try:
+            await asyncio.wait_for(self._conn_sem.acquire(), timeout=0)
+        except asyncio.TimeoutError:
             await ws.accept()
             await ws.close(1013, "Too many connections")
             return
 
         await ws.accept()
-        self._total_connections += 1
         entry_id = None
         try:
             # First message must be auth
@@ -107,7 +108,7 @@ class ControlHandler:
         except Exception as e:
             logger.error(f"Control WS error for {entry_id}: {e}")
         finally:
-            self._total_connections = max(0, self._total_connections - 1)
+            self._conn_sem.release()
             if entry_id:
                 # Only clean up if this WS is still the registered one
                 # (a new connection may have already replaced us)

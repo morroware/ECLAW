@@ -248,7 +248,11 @@ async def queue_join(body: JoinRequest, request: Request):
     ]
     await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
 
-    est_wait = result["position"] * settings.turn_time_seconds
+    # Compute wait from actual queue rank, not raw position which
+    # increases monotonically and drifts after long uptime.
+    rank = await qm.get_waiting_rank(result["id"])
+    people_ahead = max(0, rank - 1)
+    est_wait = people_ahead * settings.turn_time_seconds
 
     # Advance queue in background so the HTTP response returns immediately,
     # giving the client time to establish the control WebSocket first.

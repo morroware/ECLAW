@@ -76,7 +76,7 @@ make simulate
 curl -H "X-Admin-Key: changeme" http://localhost:8000/admin/dashboard | python3 -m json.tool
 ```
 
-Or open http://localhost:8000/api/docs for the interactive Swagger UI.
+Or open http://localhost:8000/api/docs for the interactive Swagger UI (available in dev mode only; requires `MOCK_GPIO=true`).
 
 ### Step 6: Try the admin panel
 

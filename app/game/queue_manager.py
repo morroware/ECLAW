@@ -188,6 +188,40 @@ class QueueManager:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
+    async def list_queue_admin(self) -> list[dict]:
+        """Return all active queue entries with admin-visible fields.
+
+        Includes email and ip_address which are excluded from the public
+        list_queue() for privacy.
+        """
+        db = await get_db()
+        async with db.execute(
+            "SELECT id, name, email, ip_address, state, position, created_at "
+            "FROM queue_entries WHERE state IN ('waiting', 'ready', 'active') "
+            "ORDER BY CASE state "
+            "  WHEN 'active' THEN 0 WHEN 'ready' THEN 1 WHEN 'waiting' THEN 2 END, "
+            "position ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    async def get_waiting_rank(self, entry_id: str) -> int:
+        """Return the 1-based rank of an entry among active queue entries.
+
+        Rank counts how many entries with state IN ('waiting', 'ready',
+        'active') have a position <= this entry's position.  For wait
+        estimation, subtract 1 to get the number of people *ahead*.
+        """
+        db = await get_db()
+        async with db.execute(
+            "SELECT COUNT(*) FROM queue_entries "
+            "WHERE state IN ('waiting', 'ready', 'active') "
+            "AND position <= (SELECT position FROM queue_entries WHERE id = ?)",
+            (entry_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
     async def get_recent_results(self, limit: int = 10) -> list[dict]:
         """Return the most recent completed turns for the history feed."""
         db = await get_db()
