@@ -121,6 +121,7 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 | `ADMIN_API_KEY` | `changeme` | **Change this in production** |
 | `PORT` | `8000` | Server listen port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
+| `TRUSTED_PROXIES` | `""` (empty) | Comma-separated CIDRs of trusted reverse proxies. Set to `127.0.0.1/32,::1/128` when behind nginx for correct rate limiting. |
 
 For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
 
@@ -197,10 +198,11 @@ Before opening to the internet:
 
 1. Change `ADMIN_API_KEY` from `changeme` to a strong random value
 2. Set `CORS_ALLOWED_ORIGINS` to your domain (e.g., `https://claw.yourdomain.com`)
-3. Set up TLS certificates (Let's Encrypt recommended)
-4. Update `server_name` in `deploy/nginx/claw.conf` to your domain
-5. Run `./scripts/internet_readiness_audit.sh` to verify configuration
-6. Consider putting Cloudflare or a similar WAF in front for DDoS protection
+3. Set `TRUSTED_PROXIES=127.0.0.1/32,::1/128` (required for correct rate limiting behind nginx)
+4. Set up TLS certificates (Let's Encrypt recommended)
+5. Update `server_name` in `deploy/nginx/claw.conf` to your domain
+6. Run `./scripts/internet_readiness_audit.sh` to verify configuration
+7. Consider putting Cloudflare or a similar WAF in front for DDoS protection
 
 ### Capacity
 

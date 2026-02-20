@@ -46,9 +46,9 @@ async def mjpeg_stream(request: Request):
     sem = _get_semaphore()
     if sem.locked():
         raise HTTPException(503, "Too many active streams")
+    await sem.acquire()
 
     async def generate():
-        await sem.acquire()
         try:
             while True:
                 if await request.is_disconnected():

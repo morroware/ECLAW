@@ -100,6 +100,7 @@ class HealthResponse(BaseModel):
 _join_limits: dict[str, list[float]] = defaultdict(list)
 _last_rate_limit_sweep: float = 0.0
 logger = logging.getLogger("api.routes")
+_proxy_header_warned: bool = False
 
 
 def _get_client_ip(request: Request) -> str:
@@ -111,6 +112,15 @@ def _get_client_ip(request: Request) -> str:
     direct_ip = request.client.host if request.client else "unknown"
 
     if not settings.trusted_proxies:
+        global _proxy_header_warned
+        if not _proxy_header_warned and request.headers.get("X-Forwarded-For"):
+            _proxy_header_warned = True
+            logger.warning(
+                "Received X-Forwarded-For header but TRUSTED_PROXIES is empty — "
+                "header ignored. Rate limiting uses direct connection IP (%s). "
+                "Set TRUSTED_PROXIES if behind a reverse proxy.",
+                direct_ip,
+            )
         return direct_ip
 
     # Check if the direct connection is from a trusted proxy
