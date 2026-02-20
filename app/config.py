@@ -18,10 +18,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 def _resolve_env_file() -> Path:
     """Return an absolute path to the .env file.
 
-    If ``ECLAW_ENV_FILE`` is set, use it (resolved relative to the project
+    If ``REMOTE_CLAW_ENV_FILE`` is set, use it (resolved relative to the project
     root when not absolute).  Otherwise default to ``<project_root>/.env``.
     """
-    raw = os.environ.get("ECLAW_ENV_FILE", "")
+    raw = os.environ.get("REMOTE_CLAW_ENV_FILE", "")
     if raw:
         p = Path(raw)
         return p if p.is_absolute() else _PROJECT_ROOT / p

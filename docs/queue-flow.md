@@ -1,6 +1,6 @@
-# ECLAW — Architecture, Flow & Protocol Reference
+# Remote Claw — Architecture, Flow & Protocol Reference
 
-Complete technical documentation for the ECLAW Remote Claw Machine platform.
+Complete technical documentation for the Remote Claw Machine platform.
 
 ---
 
@@ -82,7 +82,7 @@ flowchart TB
 
 ### Single Source of Truth (SSOT) Design
 
-ECLAW uses a layered SSOT approach to ensure consistency across all components:
+Remote Claw uses a layered SSOT approach to ensure consistency across all components:
 
 | Data | Source of Truth | Synced To |
 |------|----------------|-----------|
@@ -663,7 +663,7 @@ sequenceDiagram
     API->>API: token_hash = SHA-256(token)
     API->>DB: INSERT queue_entries (token_hash=...)
     API-->>B: {token: "raw_token_value"}
-    B->>B: localStorage.setItem("eclaw_token", token)
+    B->>B: localStorage.setItem("remote_claw_token", token)
 
     Note over B: Subsequent requests use token
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate all ECLAW sound effects as .mp3 files.
+Generate all Remote Claw sound effects as .mp3 files.
 
 This script synthesises the same sounds that the Web Audio API fallback code
 in web/sounds.js produces, then writes them to web/sounds/ as .mp3 files so

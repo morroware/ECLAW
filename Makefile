@@ -1,4 +1,4 @@
-# ECLAW — Common development and operations commands
+# Remote Claw — Common development and operations commands
 # Run 'make help' to see available targets
 
 .PHONY: help install run dev demo demo-pi test simulate lint clean status logs deploy-check audit-internet diagnose-stream
@@ -11,7 +11,7 @@ PYTEST   := $(VENV)/pytest
 PORT     ?= 8000
 
 help: ## Show this help message
-	@echo "ECLAW — Remote Claw Machine"
+	@echo "Remote Claw Machine"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""
@@ -36,23 +36,23 @@ run-prod: ## Start production server (no reload, localhost only)
 	$(UVICORN) app.main:app --host 127.0.0.1 --port $(PORT) --workers 1
 
 dev: ## Start dev server and open browser
-	@echo "Starting ECLAW dev server at http://localhost:$(PORT)"
+	@echo "Starting Remote Claw dev server at http://localhost:$(PORT)"
 	@echo "Press Ctrl+C to stop"
 	@command -v xdg-open >/dev/null 2>&1 && (sleep 2 && xdg-open http://localhost:$(PORT)) & true
 	@command -v open >/dev/null 2>&1 && (sleep 2 && open http://localhost:$(PORT)) & true
 	MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
 
 demo: ## Start PoC demo mode (short timers, mock GPIO)
-	@echo "Starting ECLAW in PoC DEMO mode at http://localhost:$(PORT)"
+	@echo "Starting Remote Claw in PoC DEMO mode at http://localhost:$(PORT)"
 	@echo "  Short timers for fast demo cycles"
 	@echo "  Press Ctrl+C to stop"
-	ECLAW_ENV_FILE=.env.demo MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
+	REMOTE_CLAW_ENV_FILE=.env.demo MOCK_GPIO=true $(UVICORN) app.main:app --reload --host 0.0.0.0 --port $(PORT)
 
 demo-pi: ## Start PoC demo on Pi 5 (short timers, real GPIO)
-	@echo "Starting ECLAW PoC DEMO on Pi 5 at http://0.0.0.0:$(PORT)"
+	@echo "Starting Remote Claw PoC DEMO on Pi 5 at http://0.0.0.0:$(PORT)"
 	@echo "  Short timers, REAL GPIO"
 	@echo "  Press Ctrl+C to stop"
-	ECLAW_ENV_FILE=.env.demo MOCK_GPIO=false GPIOZERO_PIN_FACTORY=lgpio $(UVICORN) app.main:app --host 0.0.0.0 --port $(PORT)
+	REMOTE_CLAW_ENV_FILE=.env.demo MOCK_GPIO=false GPIOZERO_PIN_FACTORY=lgpio $(UVICORN) app.main:app --host 0.0.0.0 --port $(PORT)
 
 # ---- Testing ---------------------------------------------------------------
 
@@ -83,7 +83,7 @@ logs: ## Tail game server logs (systemd)
 logs-watchdog: ## Tail watchdog logs (systemd)
 	sudo journalctl -u claw-watchdog -f --no-pager
 
-logs-all: ## Tail all ECLAW service logs
+logs-all: ## Tail all Remote Claw service logs
 	sudo journalctl -u claw-server -u claw-watchdog -u mediamtx -f --no-pager
 
 deploy-check: ## Verify production deployment health
@@ -92,11 +92,11 @@ deploy-check: ## Verify production deployment health
 diagnose-stream: ## Diagnose MediaMTX streaming issues
 	@bash scripts/diagnose_mediamtx.sh
 
-restart: ## Restart all ECLAW services (systemd)
+restart: ## Restart all Remote Claw services (systemd)
 	sudo systemctl restart claw-server claw-watchdog mediamtx
 	@echo "Services restarted. Run 'make status' to verify."
 
-stop: ## Stop all ECLAW services
+stop: ## Stop all Remote Claw services
 	sudo systemctl stop claw-server claw-watchdog
 	@echo "Game server and watchdog stopped."
 

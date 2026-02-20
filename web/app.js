@@ -1,5 +1,5 @@
 /**
- * ECLAW App — Main UI orchestration for The Castle Fun Center.
+ * Remote Claw App — Main UI orchestration for The Castle Fun Center.
  * Manages application state, connects components, handles UI transitions,
  * sound effects, visual feedback, confetti celebrations, screen effects,
  * current player HUD, and auto-refresh on timeout.
@@ -27,7 +27,7 @@
   const sfx = new SoundEngine();
 
   // Restore mute preference
-  if (localStorage.getItem("eclaw_muted") === "1") {
+  if (localStorage.getItem("remote_claw_muted") === "1") {
     sfx.muted = true;
   }
 
@@ -71,7 +71,7 @@
     soundToggle.addEventListener("click", () => {
       sfx.unlock();
       sfx.toggleMute();
-      localStorage.setItem("eclaw_muted", sfx.muted ? "1" : "0");
+      localStorage.setItem("remote_claw_muted", sfx.muted ? "1" : "0");
       updateSoundIcon();
     });
   }
@@ -90,8 +90,8 @@
   // -- Initialization -------------------------------------------------------
 
   // Try to restore session from localStorage
-  const savedToken = localStorage.getItem("eclaw_token");
-  const savedName = localStorage.getItem("eclaw_name");
+  const savedToken = localStorage.getItem("remote_claw_token");
+  const savedName = localStorage.getItem("remote_claw_name");
   if (savedToken) {
     token = savedToken;
     playerName = savedName;
@@ -256,7 +256,7 @@
         const data = await res.json();
         // Terminal states — clear stale token and reset to join screen
         if (data.state === "done" || data.state === "cancelled") {
-          localStorage.removeItem("eclaw_token");
+          localStorage.removeItem("remote_claw_token");
           token = null;
           switchToState(null);
           return;
@@ -264,7 +264,7 @@
         token = savedToken;
         switchToState(data.state, data);
       } else {
-        localStorage.removeItem("eclaw_token");
+        localStorage.removeItem("remote_claw_token");
         token = null;
       }
     } catch (e) {
@@ -390,8 +390,8 @@
       const data = await res.json();
       token = data.token;
       playerName = name;
-      localStorage.setItem("eclaw_token", token);
-      localStorage.setItem("eclaw_name", name);
+      localStorage.setItem("remote_claw_token", token);
+      localStorage.setItem("remote_claw_name", name);
 
       sfx.playJoinQueue();
 
@@ -948,8 +948,8 @@
       controlSocket.disconnect();
       controlSocket = null;
     }
-    localStorage.removeItem("eclaw_token");
-    localStorage.removeItem("eclaw_name");
+    localStorage.removeItem("remote_claw_token");
+    localStorage.removeItem("remote_claw_name");
     token = null;
     playerName = null;
     playerState = null;

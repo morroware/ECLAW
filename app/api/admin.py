@@ -615,12 +615,12 @@ async def admin_contacts_csv():
     writer = csv.writer(output)
     writer.writerow(["First Name", "Last Name", "Email", "SMS ON", "EMAIL ON", "Event"])
     for row in rows:
-        writer.writerow([row[0], row[1], row[2], "Yes", "Yes", "Remote eClaw"])
+        writer.writerow([row[0], row[1], row[2], "Yes", "Yes", "Remote Claw"])
 
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
         headers={
-            "Content-Disposition": 'attachment; filename="eclaw_contacts.csv"'
+            "Content-Disposition": 'attachment; filename="remote_claw_contacts.csv"'
         },
     )

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — MediaMTX Diagnostic Script
+# Remote Claw — MediaMTX Diagnostic Script
 # ============================================================
 # Deep diagnostics for when MediaMTX fails to start or stream.
 #
@@ -29,7 +29,7 @@ hint() { echo -e "        ${BLUE}->  $*${NC}"; }
 
 echo ""
 echo -e "${BOLD}========================================${NC}"
-echo -e "${BOLD}  ECLAW — MediaMTX Diagnostics${NC}"
+echo -e "${BOLD}  Remote Claw — MediaMTX Diagnostics${NC}"
 echo -e "${BOLD}========================================${NC}"
 echo ""
 

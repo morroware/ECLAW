@@ -1,6 +1,6 @@
-# ECLAW Quick Start Guide
+# Remote Claw Quick Start Guide
 
-This guide gets ECLAW running on a Raspberry Pi 5 for a PoC demo. If you just want to try it on your laptop first, skip to [Local Development](#local-development).
+This guide gets Remote Claw running on a Raspberry Pi 5 for a PoC demo. If you just want to try it on your laptop first, skip to [Local Development](#local-development).
 
 ---
 
@@ -28,8 +28,8 @@ This guide gets ECLAW running on a Raspberry Pi 5 for a PoC demo. If you just wa
 ### Step 1: Clone and install
 
 ```bash
-git clone https://github.com/morroware/ECLAW.git ECLAW
-cd ECLAW
+git clone https://github.com/morroware/remote-claw.git remote-claw
+cd remote-claw
 ./install.sh dev
 ```
 
@@ -49,7 +49,7 @@ make demo
 
 ### Step 3: Open the UI
 
-Open http://localhost:8000 in your browser. You should see the ECLAW interface with:
+Open http://localhost:8000 in your browser. You should see the Remote Claw interface with:
 - A video area (shows WebRTC stream if MediaMTX is running, or built-in MJPEG if a USB camera is connected, or "Stream not available" if neither — all expected for local dev)
 - A "Join the Queue" form
 - A live queue list
@@ -106,8 +106,8 @@ For production, change the `ADMIN_API_KEY` in `.env` before sharing access.
 ### Step 2: Clone the repository
 
 ```bash
-git clone https://github.com/morroware/ECLAW.git ECLAW
-cd ECLAW
+git clone https://github.com/morroware/remote-claw.git remote-claw
+cd remote-claw
 ```
 
 ### Step 3: Run the installer
@@ -159,7 +159,7 @@ Share the Pi's URL with anyone on the same network. The UI works on both desktop
 
 ## Wiring the Claw Machine
 
-ECLAW controls the claw machine via GPIO pins. Each pin drives a relay that switches the claw machine's physical controls.
+Remote Claw controls the claw machine via GPIO pins. Each pin drives a relay that switches the claw machine's physical controls.
 
 ### Default Pin Map (BCM numbering)
 
@@ -175,7 +175,7 @@ ECLAW controls the claw machine via GPIO pins. Each pin drives a relay that swit
 
 ### SainSmart 8-Channel Relay Board Wiring
 
-SainSmart boards (and most 8-channel relay modules) are **active-low**: the relay engages when the input pin is driven LOW. ECLAW handles this automatically when `RELAY_ACTIVE_LOW=true` (the default).
+SainSmart boards (and most 8-channel relay modules) are **active-low**: the relay engages when the input pin is driven LOW. Remote Claw handles this automatically when `RELAY_ACTIVE_LOW=true` (the default).
 
 **Board header pins:**
 
@@ -264,7 +264,7 @@ Then restart: `sudo systemctl restart claw-server`
 
 ## Camera Setup
 
-ECLAW supports two streaming modes:
+Remote Claw supports two streaming modes:
 
 1. **WebRTC via MediaMTX** (primary) — Low-latency WebRTC stream. Supports both Pi Camera modules and USB cameras. The setup script auto-detects which type is connected.
 2. **Built-in MJPEG fallback** — If MediaMTX is unavailable, the game server captures directly from a USB camera via OpenCV and serves MJPEG at `/api/stream/mjpeg` plus snapshots at `/api/stream/snapshot`. The camera auto-detects the correct `/dev/video*` device and can fall back to RTSP input. This is useful for development or if MediaMTX has issues.
@@ -336,7 +336,7 @@ The stream is available at:
 
 ## Custom Sound Effects
 
-ECLAW plays synthesized sound effects for game events (join, your-turn, drop, win, loss, etc.) using the Web Audio API. You can replace any sound with a custom audio file:
+Remote Claw plays synthesized sound effects for game events (join, your-turn, drop, win, loss, etc.) using the Web Audio API. You can replace any sound with a custom audio file:
 
 1. Place audio files in the `web/sounds/` directory (or `/opt/claw/web/sounds/` on Pi)
 2. Name the file to match the event: `join`, `your-turn`, `ready`, `move`, `drop`, `dropping`, `win`, `loss`, `timer`, `next-try`
@@ -348,7 +348,7 @@ Example: To use a custom win sound, place a file named `win.mp3` in `web/sounds/
 
 ## Internet Deployment (50+ Users)
 
-To serve ECLAW over the public internet to 50+ concurrent users, follow these steps after completing the Pi 5 setup above.
+To serve Remote Claw over the public internet to 50+ concurrent users, follow these steps after completing the Pi 5 setup above.
 
 ### Step 1: Get a domain and TLS certificate
 

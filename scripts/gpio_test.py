@@ -51,7 +51,7 @@ def test_with_gpiozero(cycles: int):
     active_high = not relay_active_low
 
     print("=" * 60)
-    print("ECLAW GPIO Test")
+    print("Remote Claw GPIO Test")
     print("=" * 60)
     print(f"  Relay polarity : {'ACTIVE-LOW' if relay_active_low else 'ACTIVE-HIGH'}")
     print(f"  gpiozero active_high={active_high}")
@@ -173,7 +173,7 @@ def test_with_gpiozero(cycles: int):
 def main():
     _load_env()
 
-    parser = argparse.ArgumentParser(description="ECLAW GPIO Test")
+    parser = argparse.ArgumentParser(description="Remote Claw GPIO Test")
     parser.add_argument("--cycles", type=int, default=200, help="Pulse cycles per pin")
     args = parser.parse_args()
 

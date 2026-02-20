@@ -1,5 +1,5 @@
 /**
- * ECLAW Admin Panel — JavaScript
+ * Remote Claw Admin Panel — JavaScript
  * Handles authentication, dashboard, game controls, queue management,
  * and live configuration editing.
  */
@@ -7,7 +7,7 @@
   "use strict";
 
   // -- State ------------------------------------------------------------------
-  let adminKey = sessionStorage.getItem("eclaw_admin_key") || "";
+  let adminKey = sessionStorage.getItem("remote_claw_admin_key") || "";
   let dashboardInterval = null;
   let configFields = []; // Loaded from server
   let pendingChanges = {}; // key -> new value
@@ -109,7 +109,7 @@
       });
       if (res.ok) {
         adminKey = key;
-        sessionStorage.setItem("eclaw_admin_key", key);
+        sessionStorage.setItem("remote_claw_admin_key", key);
         showAdmin();
         return true;
       }
@@ -138,7 +138,7 @@
 
   function logout() {
     adminKey = "";
-    sessionStorage.removeItem("eclaw_admin_key");
+    sessionStorage.removeItem("remote_claw_admin_key");
     if (adminPanel) adminPanel.classList.add("hidden");
     if (loginScreen) loginScreen.classList.remove("hidden");
     if (dashboardInterval) clearInterval(dashboardInterval);
@@ -457,7 +457,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "eclaw_contacts.csv";
+        a.download = "remote_claw_contacts.csv";
         document.body.appendChild(a);
         a.click();
         a.remove();

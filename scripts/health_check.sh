@@ -1,5 +1,5 @@
 #!/bin/bash
-# ECLAW Health Check — verifies all components are running correctly.
+# Remote Claw Health Check — verifies all components are running correctly.
 #
 # Usage:
 #   ./scripts/health_check.sh                          # Check localhost:8000
@@ -24,13 +24,13 @@ fail() { echo -e "  ${RED}FAIL${NC}  $*"; FAIL=$((FAIL + 1)); }
 warn() { echo -e "  ${YELLOW}WARN${NC}  $*"; WARN=$((WARN + 1)); }
 
 echo ""
-echo -e "${BOLD}ECLAW Health Check${NC}"
+echo -e "${BOLD}Remote Claw Health Check${NC}"
 echo -e "Target: $BASE_URL"
 echo ""
 
 # 1. Server reachable
 echo -e "${BOLD}1. Server Connectivity${NC}"
-if curl -sf "$BASE_URL/api/health" -o /tmp/eclaw_health.json --max-time 5 2>/dev/null; then
+if curl -sf "$BASE_URL/api/health" -o /tmp/remote_claw_health.json --max-time 5 2>/dev/null; then
     pass "Server is reachable"
 else
     fail "Server is not reachable at $BASE_URL"
@@ -47,7 +47,7 @@ echo -e "${BOLD}2. Health Endpoint${NC}"
 if command -v python3 &>/dev/null; then
     HEALTH=$(python3 -c "
 import json, sys
-with open('/tmp/eclaw_health.json') as f:
+with open('/tmp/remote_claw_health.json') as f:
     h = json.load(f)
 print(f\"status={h.get('status','unknown')}\")
 print(f\"gpio_locked={h.get('gpio_locked','unknown')}\")
