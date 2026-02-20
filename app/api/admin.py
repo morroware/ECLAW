@@ -18,6 +18,90 @@ _WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
 admin_router = APIRouter(prefix="/admin")
 _admin_logger = logging.getLogger("admin")
 
+# Range constraints for numeric settings. Values outside these bounds are
+# rejected by the PUT /admin/config endpoint to prevent runtime errors
+# (e.g. division by zero from command_rate_limit_hz=0) and unstable timing.
+# Format: {field_name: (min_value, max_value)}  — use None for unbounded.
+_RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
+    # Timing — must be positive integers
+    "tries_per_player":             (1, 100),
+    "turn_time_seconds":            (5, 3600),
+    "try_move_seconds":             (5, 3600),
+    "post_drop_wait_seconds":       (1, 300),
+    "ready_prompt_seconds":         (5, 300),
+    "queue_grace_period_seconds":   (0, 3600),
+
+    # GPIO pulse/hold — milliseconds, must be positive
+    "coin_pulse_ms":                (10, 5000),
+    "drop_pulse_ms":                (10, 5000),
+    "drop_hold_max_ms":             (100, 60000),
+    "min_inter_pulse_ms":           (10, 5000),
+    "direction_hold_max_ms":        (100, 120000),
+
+    # Control — Hz must be >= 1 to avoid division by zero
+    "command_rate_limit_hz":        (1, 1000),
+
+    # WebSocket limits — must be positive
+    "max_status_viewers":           (1, 10000),
+    "status_send_timeout_s":        (0.1, 60),
+    "status_keepalive_interval_s":  (5, 600),
+    "max_control_connections":      (1, 10000),
+    "control_send_timeout_s":       (0.1, 60),
+    "control_ping_interval_s":      (5, 600),
+    "control_liveness_timeout_s":   (10, 600),
+    "control_pre_auth_timeout_s":   (0.5, 30),
+    "control_max_message_bytes":    (64, 65536),
+
+    # Camera
+    "max_mjpeg_streams":            (1, 200),
+    "mjpeg_fps":                    (1, 120),
+    "camera_width":                 (160, 7680),
+    "camera_height":                (120, 4320),
+    "camera_fps":                   (1, 120),
+    "camera_warmup_frames":         (0, 100),
+    "camera_max_consecutive_failures": (1, 10000),
+    "camera_jpeg_quality":          (1, 100),
+
+    # Rate limiting
+    "rate_limit_window_s":          (60, 86400),
+    "rate_limit_sweep_interval_s":  (10, 86400),
+    "join_rate_per_ip":             (1, 10000),
+    "join_rate_per_email":          (1, 10000),
+    "health_check_timeout_s":       (0.1, 60),
+    "history_limit":                (1, 1000),
+
+    # Database
+    "db_busy_timeout_ms":           (100, 60000),
+    "db_retention_hours":           (1, 8760),
+
+    # Background task intervals — must be positive
+    "db_prune_interval_s":          (60, 86400),
+    "rate_limit_prune_age_s":       (60, 86400),
+    "queue_check_interval_s":       (1, 300),
+
+    # State machine internals
+    "ghost_player_age_s":           (5, 600),
+    "coin_post_pulse_delay_s":      (0.0, 10),
+    "emergency_stop_timeout_s":     (1, 60),
+    "turn_end_stuck_timeout_s":     (5, 300),
+
+    # GPIO executor timeouts
+    "gpio_op_timeout_s":            (0.5, 30),
+    "gpio_pulse_timeout_s":         (0.5, 30),
+    "gpio_init_timeout_s":          (1, 60),
+
+    # GPIO executor circuit breaker
+    "max_executor_replacements":    (1, 100),
+    "executor_replacement_window_s":(10, 600),
+
+    # Watchdog
+    "watchdog_check_interval_s":    (1, 60),
+    "watchdog_fail_threshold":      (1, 100),
+
+    # Server
+    "port":                         (1, 65535),
+}
+
 # Metadata for config fields: category, label, description, whether restart is needed.
 # Fields not listed here still appear under "Other".
 _CONFIG_META: dict[str, dict[str, Any]] = {
@@ -80,7 +164,7 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "control_send_timeout_s":    {"cat": "WebSocket",    "label": "Control Send Timeout (s)",   "desc": "Per-client send timeout for control messages."},
     "control_ping_interval_s":   {"cat": "WebSocket",    "label": "Control Ping Interval (s)",  "desc": "Seconds between pings on control channels."},
     "control_liveness_timeout_s":{"cat": "WebSocket",    "label": "Control Liveness Timeout (s)","desc": "Seconds before an unresponsive player is disconnected."},
-    "control_auth_timeout_s":    {"cat": "WebSocket",    "label": "Control Auth Timeout (s)",   "desc": "Seconds to wait for auth after WS connect."},
+    "control_pre_auth_timeout_s":{"cat": "WebSocket",    "label": "Control Pre-Auth Timeout (s)","desc": "Seconds to wait for initial auth message after WS connect. Intentionally short to limit unauthenticated connection dwell time."},
     "control_max_message_bytes": {"cat": "WebSocket",    "label": "Control Max Message (bytes)","desc": "Maximum size of a single control message."},
 
     # -- MJPEG / Camera --
@@ -317,6 +401,23 @@ async def admin_update_config(request: Request):
             raise HTTPException(
                 400,
                 f"Invalid value for {key}: must not contain newlines or control characters",
+            )
+
+    # Validate numeric ranges to prevent runtime errors (e.g. division by
+    # zero from command_rate_limit_hz=0) and unstable timing behaviour.
+    for key, value in coerced.items():
+        if key not in _RANGE_CONSTRAINTS:
+            continue
+        lo, hi = _RANGE_CONSTRAINTS[key]
+        if lo is not None and value < lo:
+            raise HTTPException(
+                400,
+                f"Invalid value for {key}: must be >= {lo} (got {value})",
+            )
+        if hi is not None and value > hi:
+            raise HTTPException(
+                400,
+                f"Invalid value for {key}: must be <= {hi} (got {value})",
             )
 
     # Write changes to .env file

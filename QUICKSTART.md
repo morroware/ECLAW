@@ -17,7 +17,7 @@ This guide gets ECLAW running on a Raspberry Pi 5 for a PoC demo. If you just wa
 
 ### For Local Development (any machine)
 
-- Python 3.11+
+- Python 3.10+
 - git
 - A web browser
 
