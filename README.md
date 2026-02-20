@@ -114,7 +114,7 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `MOCK_GPIO` | `true` | Use mock GPIO (set `false` on Pi 5) |
+| `MOCK_GPIO` | `false` | Use mock GPIO (set `true` for development without hardware) |
 | `TRIES_PER_PLAYER` | `2` | Number of drop attempts per turn |
 | `TRY_MOVE_SECONDS` | `30` | Time to move before auto-drop |
 | `TURN_TIME_SECONDS` | `90` | Hard limit for entire turn |
