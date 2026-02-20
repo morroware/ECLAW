@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — One-command setup for development or Pi 5 deployment
+# Remote Claw — One-command setup for development or Pi 5 deployment
 # ============================================================
 #
 # Usage:
@@ -105,7 +105,7 @@ verify_import() {
 setup_dev() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Development Setup${NC}"
+    echo -e "${BOLD}  Remote Claw — Development Setup${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -141,7 +141,7 @@ setup_dev() {
 setup_pi() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Pi 5 Production Setup${NC}"
+    echo -e "${BOLD}  Remote Claw — Pi 5 Production Setup${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -167,7 +167,7 @@ setup_pi() {
 setup_demo() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Pi 5 PoC Demo Setup${NC}"
+    echo -e "${BOLD}  Remote Claw — Pi 5 PoC Demo Setup${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -194,7 +194,7 @@ setup_demo() {
 
 setup_test() {
     echo ""
-    echo -e "${BOLD}  ECLAW — Install & Test${NC}"
+    echo -e "${BOLD}  Remote Claw — Install & Test${NC}"
     echo ""
 
     check_python
@@ -212,7 +212,7 @@ setup_test() {
 interactive_menu() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Remote Claw Machine Setup${NC}"
+    echo -e "${BOLD}  Remote Claw Machine Setup${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
     echo "  What would you like to do?"

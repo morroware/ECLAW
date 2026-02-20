@@ -45,7 +45,7 @@ get_env() {
 }
 
 echo ""
-echo -e "${BOLD}ECLAW Internet Readiness Audit${NC}"
+echo -e "${BOLD}Remote Claw Internet Readiness Audit${NC}"
 echo "env:   $ENV_FILE"
 echo "nginx: $NGINX_CONF"
 echo ""

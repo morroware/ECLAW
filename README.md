@@ -1,4 +1,4 @@
-# ECLAW — Remote Claw Machine Controller
+# Remote Claw — Remote Claw Machine Controller
 
 A full-stack platform for controlling a physical claw machine remotely over the web. Players join a queue, watch a live camera stream via WebRTC, control the claw in real-time with keyboard or touch controls, and see their results instantly.
 
@@ -11,7 +11,7 @@ Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock
 ### Try it locally (any machine)
 
 ```bash
-git clone https://github.com/morroware/ECLAW.git ECLAW && cd ECLAW
+git clone https://github.com/morroware/remote-claw.git remote-claw && cd remote-claw
 ./install.sh dev
 make run
 # Open http://localhost:8000
@@ -20,7 +20,7 @@ make run
 ### Deploy on Pi 5 for a PoC demo
 
 ```bash
-git clone https://github.com/morroware/ECLAW.git ECLAW && cd ECLAW
+git clone https://github.com/morroware/remote-claw.git remote-claw && cd remote-claw
 ./install.sh demo
 # Open http://<pi-ip> from any device on the network
 ```
@@ -135,7 +135,7 @@ For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for
 
 ```bash
 cp .env.demo .env
-# or: ECLAW_ENV_FILE=.env.demo make run
+# or: REMOTE_CLAW_ENV_FILE=.env.demo make run
 ```
 
 Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/queue-flow.md#13-configuration-reference).
@@ -188,7 +188,7 @@ Interactive API docs available at `/api/docs` (Swagger UI) when running in dev/m
 
 ## Internet Deployment (50+ Users)
 
-ECLAW is designed to serve 50+ concurrent internet users from a single Raspberry Pi 5. The architecture includes:
+Remote Claw is designed to serve 50+ concurrent internet users from a single Raspberry Pi 5. The architecture includes:
 
 ### Built-in Protection Layers
 
@@ -260,7 +260,7 @@ make status           # Health check against running server
 
 ## Safety
 
-ECLAW includes multiple safety layers to prevent hardware damage and ensure fair play:
+Remote Claw includes multiple safety layers to prevent hardware damage and ensure fair play:
 
 - **SSOT deadline tracking** — all timers backed by monotonic clock deadlines; clients receive accurate `state_seconds_left` on every state change and reconnect
 - **DB deadline persistence** — `try_move_end_at` and `turn_end_at` written to SQLite for crash recovery reference
@@ -278,7 +278,7 @@ ECLAW includes multiple safety layers to prevent hardware damage and ensure fair
 
 ## Camera Support
 
-ECLAW supports two streaming modes:
+Remote Claw supports two streaming modes:
 
 - **WebRTC via MediaMTX** — Primary mode. Uses Pi Camera Module or USB webcam via FFmpeg. Low-latency WebRTC stream proxied through nginx. The setup script auto-detects your camera type.
 - **Built-in MJPEG fallback** — If MediaMTX is not running (e.g., during development), the server captures directly from a USB camera via OpenCV and serves an MJPEG stream at `/api/stream/mjpeg`. Max 20 concurrent streams (enforced via semaphore).
@@ -287,7 +287,7 @@ ECLAW supports two streaming modes:
 
 ## Audio Feedback
 
-ECLAW includes a `SoundEngine` (Web Audio API) that provides synthesized sound effects for game events: queue join, your-turn prompt, ready confirm, move, drop, dropping, win, loss, timer warning, and next-try. Custom audio files can be placed in the `web/sounds/` directory to override any synthesized sound. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`. See the comment header in `web/sounds.js` for file naming conventions. Sound can be muted by players via a toggle in the UI (persisted in `localStorage`).
+Remote Claw includes a `SoundEngine` (Web Audio API) that provides synthesized sound effects for game events: queue join, your-turn prompt, ready confirm, move, drop, dropping, win, loss, timer warning, and next-try. Custom audio files can be placed in the `web/sounds/` directory to override any synthesized sound. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`. See the comment header in `web/sounds.js` for file naming conventions. Sound can be muted by players via a toggle in the UI (persisted in `localStorage`).
 
 ---
 

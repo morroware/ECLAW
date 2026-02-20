@@ -1,4 +1,4 @@
-# MediaMTX configuration for ECLAW — Pi Camera
+# MediaMTX configuration for Remote Claw — Pi Camera
 # Copy to /etc/mediamtx.yml on the Pi 5
 #
 # For USB cameras, use mediamtx-usb.yml instead (or run setup_pi.sh

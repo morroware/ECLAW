@@ -1,4 +1,4 @@
-# MediaMTX configuration for ECLAW — USB Camera
+# MediaMTX configuration for Remote Claw — USB Camera
 # Copy to /etc/mediamtx.yml on the Pi 5 (or any Linux host with a USB camera)
 #
 # This config uses ffmpeg to capture from a V4L2 USB camera device

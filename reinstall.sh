@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — Reinstall Script (fresh clone from GitHub)
+# Remote Claw — Reinstall Script (fresh clone from GitHub)
 # ============================================================
 #
-# Uninstalls the current ECLAW installation, pulls a fresh copy
+# Uninstalls the current Remote Claw installation, pulls a fresh copy
 # from GitHub, and runs the installer.
 #
 # Usage:
@@ -21,7 +21,7 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-REPO_URL="https://github.com/morroware/ECLAW.git"
+REPO_URL="https://github.com/morroware/remote-claw.git"
 
 info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[ OK ]${NC}  $*"; }
@@ -37,7 +37,7 @@ confirm() {
 
 # ---- Determine install directory -------------------------------------------
 
-# If run from inside the ECLAW repo, use the parent directory
+# If run from inside the Remote Claw repo, use the parent directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/install.sh" ] && [ -d "$SCRIPT_DIR/app" ]; then
     INSTALL_PARENT="$(dirname "$SCRIPT_DIR")"
@@ -45,7 +45,7 @@ if [ -f "$SCRIPT_DIR/install.sh" ] && [ -d "$SCRIPT_DIR/app" ]; then
     RUNNING_FROM_REPO=true
 else
     INSTALL_PARENT="$(pwd)"
-    INSTALL_DIR="$INSTALL_PARENT/ECLAW"
+    INSTALL_DIR="$INSTALL_PARENT/remote-claw"
     RUNNING_FROM_REPO=false
 fi
 
@@ -61,7 +61,7 @@ backup_env() {
     # Save .env if it exists so user config isn't lost
     ENV_BACKUP=""
     if [ -f "$INSTALL_DIR/.env" ]; then
-        ENV_BACKUP="$(mktemp /tmp/eclaw-env-backup.XXXXXX)"
+        ENV_BACKUP="$(mktemp /tmp/remote-claw-env-backup.XXXXXX)"
         cp "$INSTALL_DIR/.env" "$ENV_BACKUP"
         ok "Backed up .env to $ENV_BACKUP"
     fi
@@ -85,7 +85,7 @@ clean_dev() {
 }
 
 clean_pi() {
-    info "Stopping ECLAW services..."
+    info "Stopping Remote Claw services..."
     for svc in claw-watchdog claw-server mediamtx; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
             sudo systemctl stop "$svc"
@@ -170,7 +170,7 @@ fresh_clone() {
 reinstall_dev() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Fresh Reinstall (Dev)${NC}"
+    echo -e "${BOLD}  Remote Claw — Fresh Reinstall (Dev)${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -202,7 +202,7 @@ reinstall_dev() {
 reinstall_pi() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Fresh Reinstall (Pi 5)${NC}"
+    echo -e "${BOLD}  Remote Claw — Fresh Reinstall (Pi 5)${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -211,7 +211,7 @@ reinstall_pi() {
     fi
 
     echo -e "  This will:"
-    echo "    1. Stop all ECLAW services"
+    echo "    1. Stop all Remote Claw services"
     echo "    2. Remove the current deployment"
     echo "    3. Clone a fresh copy from GitHub"
     echo "    4. Run the Pi 5 production installer"
@@ -238,7 +238,7 @@ reinstall_pi() {
 reinstall_demo() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Fresh Reinstall (Demo)${NC}"
+    echo -e "${BOLD}  Remote Claw — Fresh Reinstall (Demo)${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -247,7 +247,7 @@ reinstall_demo() {
     fi
 
     echo -e "  This will:"
-    echo "    1. Stop all ECLAW services"
+    echo "    1. Stop all Remote Claw services"
     echo "    2. Remove the current deployment"
     echo "    3. Clone a fresh copy from GitHub"
     echo "    4. Run the Pi 5 demo installer"
@@ -276,10 +276,10 @@ reinstall_demo() {
 interactive_menu() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Fresh Reinstall from GitHub${NC}"
+    echo -e "${BOLD}  Remote Claw — Fresh Reinstall from GitHub${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
-    echo "  This will remove your current ECLAW installation,"
+    echo "  This will remove your current Remote Claw installation,"
     echo "  clone a fresh copy from GitHub, and reinstall."
     echo ""
     echo "  What type of installation?"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — Pi 5 Setup Script
+# Remote Claw — Pi 5 Setup Script
 # ============================================================
 # Run this on a Raspberry Pi 5 with Pi OS (64-bit).
 # Supports both Lite and Desktop editions.
@@ -14,12 +14,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-# Sanity check: make sure we're in the ECLAW project root
+# Sanity check: make sure we're in the Remote Claw project root
 for required_file in requirements.txt .env.example app/main.py; do
     if [ ! -f "$SCRIPT_DIR/$required_file" ]; then
         echo "ERROR: Cannot find $SCRIPT_DIR/$required_file"
-        echo "This script must be run from a full ECLAW repository clone."
-        echo "  git clone <repo-url> && cd ECLAW && ./scripts/setup_pi.sh"
+        echo "This script must be run from a full Remote Claw repository clone."
+        echo "  git clone <repo-url> && cd remote-claw && ./scripts/setup_pi.sh"
         exit 1
     fi
 done
@@ -43,7 +43,7 @@ fi
 
 echo ""
 echo -e "${BOLD}========================================${NC}"
-echo -e "${BOLD}  ECLAW — Pi 5 Setup${NC}"
+echo -e "${BOLD}  Remote Claw — Pi 5 Setup${NC}"
 if $DEMO_MODE; then
 echo -e "${BOLD}  Mode: PoC DEMO${NC}"
 else

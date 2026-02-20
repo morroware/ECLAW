@@ -141,7 +141,7 @@ async def _periodic_queue_check(sm, interval_seconds: int | None = None):
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     # ---- Single-worker safety guard ----
-    # ECLAW requires single-worker mode because:
+    # Remote Claw requires single-worker mode because:
     # - GPIO hardware can only have one owner process
     # - StateMachine and rate limiters use in-memory state
     # - asyncio.Lock in database.py only serialises within one process
@@ -150,7 +150,7 @@ async def lifespan(app: FastAPI):
     try:
         if int(web_concurrency) > 1:
             logger.critical(
-                "FATAL: WEB_CONCURRENCY=%s — ECLAW requires single-worker mode. "
+                "FATAL: WEB_CONCURRENCY=%s — Remote Claw requires single-worker mode. "
                 "Multi-worker deployment will cause data corruption and GPIO "
                 "conflicts. Remove WEB_CONCURRENCY or set it to 1.",
                 web_concurrency,
@@ -239,7 +239,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ECLAW Remote Claw Machine",
+    title="Remote Claw Machine",
     lifespan=lifespan,
     docs_url="/api/docs" if settings.mock_gpio else None,
     redoc_url=None,

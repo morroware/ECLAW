@@ -95,7 +95,7 @@ async def simulate_player(base_url: str, player_num: int):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="ECLAW Player Simulator")
+    parser = argparse.ArgumentParser(description="Remote Claw Player Simulator")
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--count", type=int, default=5, help="Number of simulated players")
     parser.add_argument("--parallel", action="store_true", help="Run all players simultaneously")

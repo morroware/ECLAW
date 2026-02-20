@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ECLAW — Uninstall Script
+# Remote Claw — Uninstall Script
 # ============================================================
 #
 # Usage:
@@ -38,7 +38,7 @@ confirm() {
 uninstall_dev() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Remove Development Environment${NC}"
+    echo -e "${BOLD}  Remote Claw — Remove Development Environment${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -103,7 +103,7 @@ uninstall_dev() {
 uninstall_pi() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Remove Pi 5 Deployment${NC}"
+    echo -e "${BOLD}  Remote Claw — Remove Pi 5 Deployment${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
 
@@ -115,7 +115,7 @@ uninstall_pi() {
         fail "sudo is required for Pi 5 uninstall."
     fi
 
-    echo -e "  ${RED}This will remove the ECLAW production deployment.${NC}"
+    echo -e "  ${RED}This will remove the Remote Claw production deployment.${NC}"
     echo ""
     if ! confirm "Are you sure you want to continue?"; then
         echo "  Aborted."
@@ -156,13 +156,13 @@ uninstall_pi() {
     if [ -f /etc/nginx/sites-available/claw ]; then
         sudo rm -f /etc/nginx/sites-enabled/claw
         sudo rm -f /etc/nginx/sites-available/claw
-        ok "nginx ECLAW config removed"
+        ok "nginx Remote Claw config removed"
         if sudo nginx -t 2>/dev/null; then
             sudo systemctl reload nginx 2>/dev/null || true
             ok "nginx reloaded"
         fi
     else
-        ok "No nginx ECLAW config found"
+        ok "No nginx Remote Claw config found"
     fi
 
     # [4/5] Remove application directory
@@ -216,7 +216,7 @@ uninstall_pi() {
 interactive_menu() {
     echo ""
     echo -e "${BOLD}========================================${NC}"
-    echo -e "${BOLD}  ECLAW — Uninstall${NC}"
+    echo -e "${BOLD}  Remote Claw — Uninstall${NC}"
     echo -e "${BOLD}========================================${NC}"
     echo ""
     echo "  What would you like to remove?"

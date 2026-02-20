@@ -1,5 +1,5 @@
 /**
- * ECLAW Sound Engine — Plays custom audio files with synthesized fallbacks.
+ * Remote Claw Sound Engine — Plays custom audio files with synthesized fallbacks.
  *
  * Custom sounds: Place audio files in /sounds/ to override the default
  * synthesized sounds. Supported formats: .mp3, .wav, .ogg, .webm

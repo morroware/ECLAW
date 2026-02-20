@@ -26,7 +26,7 @@ if [ ! -f ".env" ]; then
 fi
 
 echo "========================================"
-echo "  ECLAW Dev Server"
+echo "  Remote Claw Dev Server"
 echo "========================================"
 echo ""
 echo "  URL:       http://localhost:$PORT"
