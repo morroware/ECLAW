@@ -613,9 +613,9 @@ async def admin_contacts_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["First Name", "Last Name", "Email", "SMS ON", "EMAIL ON"])
+    writer.writerow(["First Name", "Last Name", "Email", "SMS ON", "EMAIL ON", "Event"])
     for row in rows:
-        writer.writerow([row[0], row[1], row[2], "Yes", "Yes"])
+        writer.writerow([row[0], row[1], row[2], "Yes", "Yes", "Remote eClaw"])
 
     return Response(
         content=output.getvalue(),
