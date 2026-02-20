@@ -323,7 +323,7 @@
     historyList.innerHTML = entries
       .map((entry) => {
         const isWin = entry.result === "win";
-        const resultLabel = isWin ? "WIN" : (entry.result || "").toUpperCase();
+        const resultLabel = isWin ? "WIN" : escapeHtml((entry.result || "").toUpperCase());
         const resultClass = isWin ? "result-win" : "result-loss";
         const tries = entry.tries_used != null ? `${entry.tries_used} tries` : "";
         const timeAgo = entry.completed_at ? formatTimeAgo(entry.completed_at) : "";

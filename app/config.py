@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     camera_device: int = 0  # /dev/videoN index for built-in MJPEG fallback
     camera_rtsp_url: str = "rtsp://127.0.0.1:8554/cam"  # RTSP fallback when device is locked by MediaMTX
 
+    # Trusted reverse proxy CIDRs (comma-separated). Only trust
+    # X-Forwarded-For when the direct connection is from a listed CIDR.
+    # Empty = always use request.client.host (safe default).
+    trusted_proxies: str = ""
+
     # Mock mode: set to true when running without real GPIO hardware
     mock_gpio: bool = False
 

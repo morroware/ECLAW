@@ -246,7 +246,7 @@
       // Stats
       const stats = data.stats || {};
       const total = stats.total_completed || 0;
-      const wins = stats.wins || 0;
+      const wins = stats.total_wins || 0;
       el("dash-total-games").textContent = String(total);
       el("dash-win-rate").textContent = total > 0
         ? `${Math.round((wins / total) * 100)}%`
@@ -309,7 +309,7 @@
       .map((r) => {
         const isWin = r.result === "win";
         const badge = isWin ? "badge-win" : "badge-loss";
-        const label = isWin ? "WIN" : (r.result || "LOSS").toUpperCase();
+        const label = isWin ? "WIN" : escapeHtml((r.result || "LOSS").toUpperCase());
         return `<div class="recent-entry">
           <span class="recent-badge ${badge}">${label}</span>
           <span class="recent-name">${escapeHtml(r.name)}</span>
@@ -401,12 +401,12 @@
       .map((e) => {
         const stateClass = e.state === "active" ? "active" : e.state === "ready" ? "ready" : "waiting";
         return `<tr>
-          <td class="mono">${e.id}</td>
+          <td class="mono">${escapeHtml(String(e.id))}</td>
           <td>${escapeHtml(e.name)}</td>
-          <td><span class="state-badge ${stateClass}">${e.state}</span></td>
-          <td>${e.position}</td>
+          <td><span class="state-badge ${stateClass}">${escapeHtml(e.state)}</span></td>
+          <td>${escapeHtml(String(e.position))}</td>
           <td>${formatTimeAgo(e.created_at)}</td>
-          <td><button class="kick-btn" data-id="${e.id}" data-name="${escapeHtml(e.name)}">Kick</button></td>
+          <td><button class="kick-btn" data-id="${escapeHtml(String(e.id))}" data-name="${escapeHtml(e.name)}">Kick</button></td>
         </tr>`;
       })
       .join("");
@@ -517,12 +517,12 @@
               ${escapeHtml(f.label)}
               ${f.restart_required ? '<span class="restart-badge">restart</span>' : ""}
             </div>
-            <div class="field-env-key">${f.env_key}</div>
+            <div class="field-env-key">${escapeHtml(f.env_key)}</div>
             <div class="field-desc">${escapeHtml(f.description)}</div>
           </div>
           <div class="field-input-wrap">
             ${renderFieldInput(f, currentValue)}
-            <div class="field-default">Default: ${formatDefault(f.default)}</div>
+            <div class="field-default">Default: ${escapeHtml(formatDefault(f.default))}</div>
           </div>
         </div>`;
       }
