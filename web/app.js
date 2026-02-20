@@ -57,6 +57,7 @@
   const screenFlash = $("#screen-flash");
   const currentPlayerHud = $("#current-player-hud");
   const playerHudName = $("#player-hud-name");
+  const streamReconnectBtn = $("#stream-reconnect");
 
   // -- Sound Toggle ---------------------------------------------------------
   function updateSoundIcon() {
@@ -218,8 +219,29 @@
   function initStream() {
     const video = $("#stream-video");
     streamPlayer = new StreamPlayer(video, "/stream/cam");
+
+    // Show/hide reconnect button based on stream status
+    streamPlayer.onStatusChange = (status) => {
+      if (!streamReconnectBtn) return;
+      if (status === "reconnecting") {
+        streamReconnectBtn.classList.remove("hidden");
+      } else if (status === "playing") {
+        streamReconnectBtn.classList.add("hidden");
+      }
+    };
+
     streamPlayer.connect().catch((err) => {
       console.warn("Stream not available:", err.message);
+    });
+  }
+
+  // Stream reconnect button handler
+  if (streamReconnectBtn) {
+    streamReconnectBtn.addEventListener("click", () => {
+      if (streamPlayer) {
+        streamReconnectBtn.classList.add("hidden");
+        streamPlayer.reconnect();
+      }
     });
   }
 
