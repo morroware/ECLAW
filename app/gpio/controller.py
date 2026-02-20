@@ -80,6 +80,11 @@ class GPIOController:
         self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="gpio"
         )
+        # Circuit breaker: track executor replacements in a rolling window.
+        # If replacements exceed the configured maximum within the window,
+        # the process exits so the systemd watchdog can restart it cleanly.
+        self._executor_replacements: int = 0
+        self._last_replacement_reset: float = time.monotonic()
 
     # -- Executor helper -----------------------------------------------------
 
@@ -121,7 +126,30 @@ class GPIOController:
         no way to kill it from Python.  ``shutdown(wait=False)`` tells the
         pool to stop accepting work; the stuck thread will be reaped when
         the process exits.
+
+        Circuit breaker: if too many replacements happen within a rolling
+        window, the hardware is likely in a bad state (sustained bus noise,
+        kernel driver crash).  In that case we exit the process so the
+        systemd watchdog can restart cleanly.
         """
+        now = time.monotonic()
+
+        # Reset the rolling window if enough time has elapsed.
+        if now - self._last_replacement_reset > settings.executor_replacement_window_s:
+            self._executor_replacements = 0
+            self._last_replacement_reset = now
+
+        self._executor_replacements += 1
+
+        if self._executor_replacements > settings.max_executor_replacements:
+            logger.critical(
+                "GPIO executor replaced %d times in %ds — circuit breaker "
+                "tripped, exiting for watchdog restart",
+                self._executor_replacements,
+                settings.executor_replacement_window_s,
+            )
+            os._exit(1)
+
         old = self._executor
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="gpio"
@@ -130,7 +158,11 @@ class GPIOController:
             old.shutdown(wait=False, cancel_futures=True)
         except Exception:
             pass
-        logger.warning("GPIO executor replaced — old thread may still be blocked")
+        logger.warning(
+            "GPIO executor replaced (%d/%d in window) — old thread may still be blocked",
+            self._executor_replacements,
+            settings.max_executor_replacements,
+        )
 
     # -- Lifecycle -----------------------------------------------------------
 

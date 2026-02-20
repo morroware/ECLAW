@@ -824,3 +824,135 @@ async def test_health_client_cleanup():
 
     await close_health_http()
     assert routes_mod._health_http is None
+
+
+# ===========================================================================
+# Test: GPIO circuit breaker triggers after max replacements
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_gpio_circuit_breaker_triggers():
+    """Repeated executor replacements within the rolling window should
+    trigger the circuit breaker and call os._exit(1)."""
+    import unittest.mock
+
+    gpio = GPIOController()
+    await gpio.initialize()
+
+    original_max = settings.max_executor_replacements
+    original_window = settings.executor_replacement_window_s
+    settings.max_executor_replacements = 3
+    settings.executor_replacement_window_s = 600  # large window
+
+    try:
+        # First 3 replacements should succeed
+        for _ in range(3):
+            gpio._replace_executor()
+        assert gpio._executor_replacements == 3
+
+        # 4th should trigger os._exit
+        with unittest.mock.patch("os._exit", side_effect=SystemExit(1)):
+            with pytest.raises(SystemExit):
+                gpio._replace_executor()
+    finally:
+        settings.max_executor_replacements = original_max
+        settings.executor_replacement_window_s = original_window
+
+
+@pytest.mark.anyio
+async def test_gpio_circuit_breaker_resets_after_window():
+    """The circuit breaker counter should reset when the rolling window
+    elapses, allowing new replacements."""
+    gpio = GPIOController()
+    await gpio.initialize()
+
+    original_max = settings.max_executor_replacements
+    original_window = settings.executor_replacement_window_s
+    settings.max_executor_replacements = 3
+    settings.executor_replacement_window_s = 60
+
+    try:
+        # Use up 3 replacements
+        for _ in range(3):
+            gpio._replace_executor()
+        assert gpio._executor_replacements == 3
+
+        # Simulate window expiry by backdating the reset timestamp
+        gpio._last_replacement_reset = time.monotonic() - 61
+
+        # Next replacement should reset the counter and succeed
+        gpio._replace_executor()
+        assert gpio._executor_replacements == 1
+    finally:
+        settings.max_executor_replacements = original_max
+        settings.executor_replacement_window_s = original_window
+
+
+# ===========================================================================
+# Test: WebSocket semaphore is not consumed by unauthenticated connections
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_ws_semaphore_not_held_during_auth_timeout():
+    """An unauthenticated connection that times out should NOT consume
+    a semaphore slot."""
+    ctrl = ControlHandler(None, _MockQueue(), _MockGPIO(), settings)
+
+    # Use a small semaphore to make the test sensitive
+    ctrl._conn_sem = asyncio.Semaphore(1)
+
+    class _SlowAuthSocket:
+        """Simulates a client that connects but never sends auth."""
+        accepted = False
+        closed = False
+        close_code = None
+
+        async def accept(self):
+            self.accepted = True
+
+        async def receive_text(self):
+            await asyncio.sleep(999)
+
+        async def close(self, code=1000, reason=""):
+            self.closed = True
+            self.close_code = code
+
+        async def send_text(self, data):
+            pass
+
+    ws = _SlowAuthSocket()
+
+    original_timeout = settings.control_pre_auth_timeout_s
+    settings.control_pre_auth_timeout_s = 0.1
+    try:
+        await asyncio.wait_for(ctrl.handle_connection(ws), timeout=2.0)
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        settings.control_pre_auth_timeout_s = original_timeout
+
+    # The semaphore should still be available (not leaked)
+    assert not ctrl._conn_sem.locked(), \
+        "Semaphore was consumed by unauthenticated connection"
+    assert ws.accepted, "WebSocket should have been accepted"
+    assert ws.closed, "WebSocket should have been closed after auth timeout"
+
+
+# ===========================================================================
+# Test: Single-worker startup guard rejects multi-worker
+# ===========================================================================
+
+@pytest.mark.anyio
+async def test_single_worker_guard_rejects_multi_worker():
+    """Setting WEB_CONCURRENCY > 1 should prevent startup."""
+    original = os.environ.get("WEB_CONCURRENCY")
+    os.environ["WEB_CONCURRENCY"] = "4"
+    try:
+        with pytest.raises(SystemExit):
+            async with app.router.lifespan_context(app):
+                pass  # Should not reach here
+    finally:
+        if original is None:
+            os.environ.pop("WEB_CONCURRENCY", None)
+        else:
+            os.environ["WEB_CONCURRENCY"] = original

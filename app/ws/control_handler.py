@@ -27,18 +27,30 @@ class ControlHandler:
         self._conn_sem = asyncio.Semaphore(settings.max_control_connections)
 
     async def handle_connection(self, ws: WebSocket):
-        """Handle a full control WebSocket lifecycle."""
-        if self._conn_sem.locked():
-            await ws.accept()
-            await ws.close(1013, "Too many connections")
-            return
+        """Handle a full control WebSocket lifecycle.
 
-        await self._conn_sem.acquire()
+        Security: the semaphore is acquired AFTER authentication to prevent
+        slowloris attacks where an attacker opens many connections and holds
+        semaphore slots for the full auth timeout without ever authenticating.
+        The pre-auth timeout is intentionally short (2s default) — the real
+        frontend sends the token immediately on connection.
+        """
         await ws.accept()
         entry_id = None
+        sem_acquired = False
         try:
-            # First message must be auth
-            raw = await asyncio.wait_for(ws.receive_text(), timeout=self.settings.control_auth_timeout_s)
+            # Phase 1: Authenticate BEFORE acquiring the semaphore.
+            # Uses a short pre-auth timeout to limit unauthenticated
+            # connection dwell time.
+            try:
+                raw = await asyncio.wait_for(
+                    ws.receive_text(),
+                    timeout=self.settings.control_pre_auth_timeout_s,
+                )
+            except asyncio.TimeoutError:
+                await ws.close(1008, "Auth timeout")
+                return
+
             msg = json.loads(raw)
             if msg.get("type") != "auth" or "token" not in msg:
                 await ws.send_text(json.dumps({"type": "error", "message": "Auth required"}))
@@ -51,6 +63,14 @@ class ControlHandler:
                 await ws.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
                 await ws.close(1008)
                 return
+
+            # Phase 2: Authenticated — now acquire the connection semaphore.
+            if self._conn_sem.locked():
+                await ws.close(1013, "Too many connections")
+                return
+
+            await self._conn_sem.acquire()
+            sem_acquired = True
 
             entry_id = entry["id"]
 
@@ -102,12 +122,11 @@ class ControlHandler:
             finally:
                 ping_task.cancel()
 
-        except asyncio.TimeoutError:
-            await ws.close(1008)
         except Exception as e:
             logger.error(f"Control WS error for {entry_id}: {e}")
         finally:
-            self._conn_sem.release()
+            if sem_acquired:
+                self._conn_sem.release()
             if entry_id:
                 # Only clean up if this WS is still the registered one
                 # (a new connection may have already replaced us)

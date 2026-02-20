@@ -1,4 +1,14 @@
-"""SQLite database layer with async access and auto-migration."""
+"""SQLite database layer with async access and auto-migration.
+
+Single-worker requirement
+~~~~~~~~~~~~~~~~~~~~~~~~~
+``_write_lock`` is an ``asyncio.Lock`` that serialises write operations
+within a single process.  This is intentional: ECLAW runs as a single
+uvicorn worker because GPIO hardware ownership, in-memory state machine
+state, and in-memory rate limiting all require a single process.  Do NOT
+deploy with multiple workers (gunicorn --workers N or WEB_CONCURRENCY>1).
+The startup guard in ``app.main.lifespan`` enforces this at boot.
+"""
 
 import asyncio
 import hashlib
@@ -13,6 +23,7 @@ logger = logging.getLogger("database")
 
 _db: aiosqlite.Connection | None = None
 _db_lock: asyncio.Lock | None = None
+# Single-process write serialisation — see module docstring for rationale.
 _write_lock: asyncio.Lock | None = None
 
 
