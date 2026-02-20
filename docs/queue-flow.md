@@ -8,7 +8,7 @@ Complete technical documentation for the ECLAW Remote Claw Machine platform.
 
 ```mermaid
 flowchart TB
-    subgraph Internet["Internet Users (50+)"]
+    subgraph Internet["Internet Users (hundreds)"]
         B1[Browser 1<br/>Desktop / Mobile]
         B2[Browser 2]
         BN[Browser N]
@@ -692,7 +692,7 @@ sequenceDiagram
 
 ---
 
-## 12. Scaling for 50+ Internet Users
+## 12. Scaling for Hundreds of Internet Users
 
 ### What Scales
 
@@ -715,7 +715,7 @@ sequenceDiagram
 | In-memory rate limiting | Single process, no Redis | nginx handles the edge; app rate limits are per-email/IP backup |
 | Single uvicorn worker | GPIO ownership, shared state | Async handles concurrency within one process |
 
-### Deployment Recommendations for 50+ Users
+### Deployment Recommendations for Production
 
 1. **Use WebRTC via MediaMTX** (not MJPEG) for the video stream -- one WebRTC connection per viewer is far more efficient than MJPEG
 2. **Set CORS_ALLOWED_ORIGINS** to your exact domain -- not `*`
@@ -834,7 +834,7 @@ Raspberry Pi 5                    SainSmart 8-Channel Relay Board
 ```mermaid
 flowchart TB
     subgraph Internet
-        Users["50+ Users<br/>Desktop and Mobile"]
+        Users["Hundreds of Users<br/>Desktop and Mobile"]
     end
 
     subgraph CDN["CDN / WAF (optional)"]
