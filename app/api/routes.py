@@ -379,6 +379,14 @@ async def _get_health_http():
     return _health_http
 
 
+async def close_health_http():
+    """Close the shared health-check HTTP client (call during shutdown)."""
+    global _health_http
+    if _health_http is not None:
+        await _health_http.aclose()
+        _health_http = None
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request):
     camera_ok = False

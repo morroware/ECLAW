@@ -211,6 +211,8 @@ async def lifespan(app: FastAPI):
     if app.state.camera:
         app.state.camera.stop()
     await gpio.cleanup()
+    from app.api.routes import close_health_http
+    await close_health_http()
     await close_db()
     logger.info("Shutdown complete")
 
