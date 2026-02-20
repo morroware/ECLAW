@@ -44,10 +44,9 @@ async def mjpeg_stream(request: Request):
         raise HTTPException(503, "Camera not available")
 
     sem = _get_semaphore()
-    try:
-        await asyncio.wait_for(sem.acquire(), timeout=0)
-    except asyncio.TimeoutError:
+    if sem.locked():
         raise HTTPException(503, "Too many active streams")
+    await sem.acquire()
 
     async def generate():
         try:

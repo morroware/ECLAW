@@ -28,13 +28,12 @@ class ControlHandler:
 
     async def handle_connection(self, ws: WebSocket):
         """Handle a full control WebSocket lifecycle."""
-        try:
-            await asyncio.wait_for(self._conn_sem.acquire(), timeout=0)
-        except asyncio.TimeoutError:
+        if self._conn_sem.locked():
             await ws.accept()
             await ws.close(1013, "Too many connections")
             return
 
+        await self._conn_sem.acquire()
         await ws.accept()
         entry_id = None
         try:
