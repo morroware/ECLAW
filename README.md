@@ -117,16 +117,18 @@ make db-reset         # Reset database
 
 All settings are in `.env` (copied from `.env.example` during install). Key settings:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MOCK_GPIO` | `false` | Use mock GPIO (set `true` for development without hardware) |
-| `TRIES_PER_PLAYER` | `2` | Number of drop attempts per turn |
-| `TRY_MOVE_SECONDS` | `30` | Time to move before auto-drop |
-| `TURN_TIME_SECONDS` | `90` | Hard limit for entire turn |
-| `ADMIN_API_KEY` | `changeme` | **Change this in production** |
-| `PORT` | `8000` | Server listen port |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
-| `TRUSTED_PROXIES` | `""` (empty) | Comma-separated CIDRs of trusted reverse proxies. Set to `127.0.0.1/32,::1/128` when behind nginx for correct rate limiting. |
+| Setting | Code Default | `.env.example` Default | Description |
+|---------|-------------|----------------------|-------------|
+| `MOCK_GPIO` | `false` | `true` | Use mock GPIO. `.env.example` enables it for safe dev setup; set `false` for Pi 5 hardware. |
+| `TRIES_PER_PLAYER` | `2` | `2` | Number of drop attempts per turn |
+| `TRY_MOVE_SECONDS` | `30` | `30` | Time to move before auto-drop |
+| `TURN_TIME_SECONDS` | `90` | `90` | Hard limit for entire turn |
+| `ADMIN_API_KEY` | `changeme` | `changeme` | **Change this in production** |
+| `PORT` | `8000` | `8000` | Server listen port |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
+| `TRUSTED_PROXIES` | `""` (empty) | `127.0.0.1/32,::1/128` | Comma-separated CIDRs of trusted reverse proxies. `.env.example` assumes nginx on localhost; empty = ignore X-Forwarded-For (safe when not behind a proxy). |
+
+> **Note:** "Code Default" is the fallback value in `app/config.py` when a key is absent from `.env`. "`.env.example` Default" is the value shipped in the template that `install.sh` copies to `.env`. When running without an `.env` file the code defaults apply.
 
 For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
 
@@ -241,7 +243,7 @@ make status           # Health check against running server
 
 ### Development
 
-- Python 3.11+
+- Python 3.10+
 - No hardware required (uses mock GPIO)
 
 ### Pi 5 Production

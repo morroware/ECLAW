@@ -164,6 +164,70 @@ async def test_admin_dashboard(api_client):
 
 
 @pytest.mark.anyio
+async def test_admin_config_rejects_zero_rate_limit_hz(api_client):
+    """command_rate_limit_hz=0 would cause division-by-zero at runtime."""
+    res = await api_client.put(
+        "/admin/config",
+        json={"changes": {"command_rate_limit_hz": 0}},
+        headers={"X-Admin-Key": "changeme"},
+    )
+    assert res.status_code == 400
+    assert "must be >= 1" in res.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_admin_config_rejects_negative_timeout(api_client):
+    """Negative timeout values should be rejected."""
+    res = await api_client.put(
+        "/admin/config",
+        json={"changes": {"control_liveness_timeout_s": -5}},
+        headers={"X-Admin-Key": "changeme"},
+    )
+    assert res.status_code == 400
+    assert "must be >= " in res.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_admin_config_rejects_exceeding_max(api_client):
+    """Values above the max bound should be rejected."""
+    res = await api_client.put(
+        "/admin/config",
+        json={"changes": {"camera_jpeg_quality": 200}},
+        headers={"X-Admin-Key": "changeme"},
+    )
+    assert res.status_code == 400
+    assert "must be <= 100" in res.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_admin_config_accepts_valid_values(api_client):
+    """Valid values within range should be accepted."""
+    original = settings.command_rate_limit_hz
+    try:
+        res = await api_client.put(
+            "/admin/config",
+            json={"changes": {"command_rate_limit_hz": 50}},
+            headers={"X-Admin-Key": "changeme"},
+        )
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+    finally:
+        settings.command_rate_limit_hz = original
+
+
+@pytest.mark.anyio
+async def test_admin_config_rejects_unknown_control_auth_timeout(api_client):
+    """control_auth_timeout_s was removed; submitting it should fail."""
+    res = await api_client.put(
+        "/admin/config",
+        json={"changes": {"control_auth_timeout_s": 10}},
+        headers={"X-Admin-Key": "changeme"},
+    )
+    assert res.status_code == 400
+    assert "Unknown config keys" in res.json()["detail"]
+
+
+@pytest.mark.anyio
 async def test_join_rate_limit_normalizes_email(api_client):
     import time
 

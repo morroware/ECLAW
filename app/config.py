@@ -102,7 +102,6 @@ class Settings(BaseSettings):
     control_send_timeout_s: float = 2.0
     control_ping_interval_s: int = 20
     control_liveness_timeout_s: int = 60
-    control_auth_timeout_s: int = 10
     control_pre_auth_timeout_s: float = 2.0
     control_max_message_bytes: int = 1024
 
