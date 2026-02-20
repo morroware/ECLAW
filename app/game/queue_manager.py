@@ -141,7 +141,9 @@ class QueueManager:
         ) as cur:
             waiting = (await cur.fetchone())[0]
         async with db.execute(
-            "SELECT name, state FROM queue_entries WHERE state IN ('active', 'ready') LIMIT 1"
+            "SELECT name, state FROM queue_entries WHERE state IN ('active', 'ready') "
+            "ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'ready' THEN 1 END, position ASC "
+            "LIMIT 1"
         ) as cur:
             active_row = await cur.fetchone()
         return {

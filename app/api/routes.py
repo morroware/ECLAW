@@ -286,6 +286,20 @@ async def queue_leave(request: Request, authorization: str = Header(...)):
     # waiting/ready DB states — an active player would wrongly get 404.
     if entry["id"] == sm.active_entry_id:
         await sm.force_end_turn("cancelled")
+    elif entry["state"] == "active":
+        # Stale active entry: DB says 'active' but SM no longer tracks this
+        # player (e.g., after force recovery where the DB write failed).
+        # Complete directly, mirroring the admin kick logic.
+        await qm.complete_entry(entry["id"], "cancelled", 0)
+
+        # Broadcast updated queue to all viewers
+        status = await qm.get_queue_status()
+        entries = await qm.list_queue()
+        queue_entries = [
+            {"name": e["name"], "state": e["state"], "position": e["position"]}
+            for e in entries
+        ]
+        await request.app.state.ws_hub.broadcast_queue_update(status, queue_entries)
     else:
         left = await qm.leave(token_hash)
         if not left:

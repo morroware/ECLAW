@@ -129,24 +129,33 @@ class StateMachine:
 
                         continue  # Try the next waiting player
 
-                # Player is connected (or just joined) — normal ready prompt
-                self.active_entry_id = next_entry["id"]
-                await self.queue.set_state(next_entry["id"], "ready")
+                # Player is connected (or just joined) — normal ready prompt.
+                # Acquire _sm_lock for the mutation section so that
+                # force_end_turn() / timer callbacks cannot interleave
+                # between setting active_entry_id and _enter_state().
+                async with self._sm_lock:
+                    # Re-validate: another coroutine may have changed state
+                    # while we awaited ghost-player DB operations above.
+                    if self.state != TurnState.IDLE:
+                        return
 
-                # Broadcast updated queue so viewers see the player as READY
-                try:
-                    status = await self.queue.get_queue_status()
-                    entries = await self.queue.list_queue()
-                    queue_entries = [
-                        {"name": e["name"], "state": e["state"], "position": e["position"]}
-                        for e in entries
-                    ]
-                    await self.ws.broadcast_queue_update(status, queue_entries)
-                except Exception:
-                    logger.exception("Broadcast failed during ready advancement (non-fatal)")
+                    self.active_entry_id = next_entry["id"]
+                    await self.queue.set_state(next_entry["id"], "ready")
 
-                await self._enter_state(TurnState.READY_PROMPT)
-                return
+                    # Broadcast updated queue so viewers see the player as READY
+                    try:
+                        status = await self.queue.get_queue_status()
+                        entries = await self.queue.list_queue()
+                        queue_entries = [
+                            {"name": e["name"], "state": e["state"], "position": e["position"]}
+                            for e in entries
+                        ]
+                        await self.ws.broadcast_queue_update(status, queue_entries)
+                    except Exception:
+                        logger.exception("Broadcast failed during ready advancement (non-fatal)")
+
+                    await self._enter_state(TurnState.READY_PROMPT)
+                    return
 
     async def handle_ready_confirm(self, entry_id: str):
         """Called when the prompted player confirms they are ready."""

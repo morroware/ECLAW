@@ -17,6 +17,16 @@ class StreamPlayer {
     this._statusEl = null;
     this._debug = new URLSearchParams(location.search).has("debug");
     if (this._debug) this._createStatusOverlay();
+
+    // Stream status callback — called with "connecting", "playing",
+    // "reconnecting", or "failed" so the UI can show/hide a reconnect button.
+    this.onStatusChange = null;
+    this._status = "connecting";
+  }
+
+  _setStatus(status) {
+    this._status = status;
+    if (this.onStatusChange) this.onStatusChange(status);
   }
 
   _createStatusOverlay() {
@@ -38,11 +48,13 @@ class StreamPlayer {
 
   async connect() {
     this._log("connecting via WHEP...");
+    this._setStatus("connecting");
     try {
       await this._connectWhep();
       this._backoff = 1000; // reset on successful connection
     } catch (e) {
       this._log("WHEP failed: " + e.message);
+      this._setStatus("reconnecting");
       this._scheduleReconnect();
     }
   }
@@ -91,11 +103,13 @@ class StreamPlayer {
       const state = this.pc.iceConnectionState;
       this._log("ICE: " + state);
       if (state === "failed") {
+        this._setStatus("reconnecting");
         this._scheduleReconnect();
       } else if (state === "disconnected") {
         // Temporary blip — give 10s to recover before reconnecting
         setTimeout(() => {
           if (this.pc && this.pc.iceConnectionState !== "connected") {
+            this._setStatus("reconnecting");
             this._scheduleReconnect();
           }
         }, 10000);
@@ -160,6 +174,7 @@ class StreamPlayer {
 
       if (w > 0 && h > 0 && ready >= 2) {
         this._log("playing " + w + "x" + h);
+        this._setStatus("playing");
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
         return;
@@ -171,6 +186,7 @@ class StreamPlayer {
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
         this._log("no frames after 10s, retrying WebRTC...");
+        this._setStatus("reconnecting");
         this._scheduleReconnect();
       }
     }, 1000);
