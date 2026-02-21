@@ -226,8 +226,8 @@ Before opening to the internet:
 
 See [docs/queue-flow.md](docs/queue-flow.md) for the complete architecture reference, flow charts, protocol documentation, and scaling analysis.
 
-If you need to keep port `8000` for upstream services and still remove browser SSL warnings, follow [docs/brownrice-ssl-proxy.md](docs/brownrice-ssl-proxy.md) to terminate TLS on your Brownrice host and proxy to the Pi app.
-You can also run the interactive setup wizard on the Pi: `./scripts/setup_brownrice_tls_proxy.sh`.
+If the Pi shares a public IP with another server (e.g. Grafana), follow [docs/brownrice-ssl-proxy.md](docs/brownrice-ssl-proxy.md) to terminate TLS on the server that owns port 443 and reverse-proxy to the Pi.
+Run the setup wizard on that server: `./scripts/setup_grafana_tls_proxy.sh`.
 
 ---
 
