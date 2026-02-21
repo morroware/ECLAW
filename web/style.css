@@ -167,7 +167,7 @@ input, textarea {
   align-items: center;
   padding: 6px 12px;
   background: var(--surface-solid);
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   flex-shrink: 0;
   z-index: 20;
   min-height: 36px;
@@ -223,7 +223,7 @@ input, textarea {
 /* Sound toggle */
 #sound-toggle {
   background: rgba(255,255,255,0.05);
-  border: 1px solid var(--glass-border);
+  border: none;
   border-radius: 8px;
   color: var(--text-dim);
   font-size: 0.9rem;
@@ -239,7 +239,6 @@ input, textarea {
 }
 #sound-toggle:hover {
   background: rgba(255,255,255,0.1);
-  border-color: var(--primary);
   color: var(--text);
 }
 #sound-toggle.muted {
@@ -332,21 +331,22 @@ input, textarea {
   align-items: center;
   gap: 6px;
   padding: 8px 18px;
-  border: 1px solid var(--glass-border);
+  border: none;
   border-radius: var(--radius);
-  background: var(--surface);
+  background: rgba(16, 14, 32, 0.8);
   backdrop-filter: blur(12px);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition), border-color var(--transition);
+  transition: background var(--transition), box-shadow var(--transition);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 #stream-reconnect:hover {
-  background: var(--surface-2);
-  border-color: var(--primary);
+  background: rgba(24, 20, 50, 0.9);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 12px var(--primary-dim);
 }
 
 #stream-reconnect .reconnect-icon {
@@ -457,13 +457,14 @@ input, textarea {
   align-items: center;
   gap: 6px;
   padding: 4px 14px 4px 10px;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.8);
   /* No backdrop-filter — causes black video on mobile (WebKit compositing bug) */
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  border: none;
   border-radius: 20px;
   pointer-events: none;
   animation: playerHudSlideIn 0.4s ease-out;
   white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
 #current-player-hud.hidden {
@@ -534,10 +535,11 @@ input, textarea {
   width: 84%;
   max-width: 340px;
   padding: 20px;
-  background: var(--surface-solid);
+  background: rgba(10, 10, 18, 0.82);
   /* No backdrop-filter — causes black video on mobile (WebKit compositing bug) */
-  border: 1px solid var(--glass-border);
+  border: none;
   border-radius: var(--radius-xl);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   /* Center in game area — use inset + margin for robust mobile centering */
   left: 0;
@@ -560,7 +562,6 @@ input, textarea {
 .card {
   position: relative; /* redundant with overlay-panel but explicit */
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .card-glow {
@@ -844,13 +845,12 @@ button:hover .btn-shine {
 
 #ready-panel {
   text-align: center;
-  border-color: rgba(16, 185, 129, 0.3);
-  animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1), readyBorderGlow 2s ease-in-out infinite;
+  animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1), readyPanelGlow 2s ease-in-out infinite;
 }
 
-@keyframes readyBorderGlow {
-  0%, 100% { box-shadow: 0 0 20px var(--success-glow); }
-  50%      { box-shadow: 0 0 40px var(--success-glow), 0 0 60px rgba(16, 185, 129, 0.15); }
+@keyframes readyPanelGlow {
+  0%, 100% { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px var(--success-glow); }
+  50%      { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 40px var(--success-glow), 0 0 60px rgba(16, 185, 129, 0.15); }
 }
 
 .ready-alert {
@@ -927,9 +927,8 @@ button:hover .btn-shine {
   left: 0;
   right: 0;
   padding: 8px 14px calc(12px + var(--safe-bottom));
-  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.3) 70%, transparent 100%);
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.15) 70%, transparent 100%);
   animation: controlsSlideUp 0.3s ease-out;
-  border-top: 1px solid rgba(139,92,246,0.1);
 }
 
 @keyframes controlsSlideUp {
@@ -943,9 +942,6 @@ button:hover .btn-shine {
   align-items: center;
   margin-bottom: 6px;
   padding: 2px 8px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.04);
 }
 
 #ctrl-try {
@@ -1002,7 +998,7 @@ button:hover .btn-shine {
   flex-direction: column;
   gap: 1px;
   background: linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
-  border: 2px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px;
   color: var(--text);
   cursor: pointer;
@@ -1010,20 +1006,19 @@ button:hover .btn-shine {
   /* Ensure touch targets are big enough */
   min-width: 44px;
   min-height: 44px;
-  /* Inset 3D look */
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 4px rgba(0,0,0,0.3);
+  /* Subtle depth */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
 
 .dpad-btn:hover {
-  border-color: var(--primary);
   background: linear-gradient(145deg, rgba(139,92,246,0.15), rgba(255,255,255,0.06));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 0 12px var(--primary-dim);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 12px var(--primary-dim);
 }
 
 .dpad-btn:active,
 .dpad-btn.active {
   background: linear-gradient(135deg, var(--primary), #6d28d9);
-  border-color: var(--primary-bright);
+  border-color: rgba(167, 139, 250, 0.4);
   box-shadow: 0 0 20px var(--primary-glow), inset 0 2px 6px rgba(0,0,0,0.3);
   transform: scale(0.92);
   color: white;
@@ -1057,26 +1052,26 @@ button:hover .btn-shine {
 }
 
 .dpad-center {
-  background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(255,255,255,0.02) 70%);
-  border: 1px solid rgba(139,92,246,0.15);
+  background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, rgba(255,255,255,0.02) 70%);
+  border: 1px solid rgba(139,92,246,0.1);
   cursor: default;
   border-radius: 50%;
   min-width: unset;
   min-height: unset;
-  box-shadow: inset 0 0 8px rgba(139,92,246,0.08);
+  box-shadow: none;
 }
 
 .dpad-center:hover {
-  background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(255,255,255,0.02) 70%);
-  border-color: rgba(139,92,246,0.15);
-  box-shadow: inset 0 0 8px rgba(139,92,246,0.08);
+  background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, rgba(255,255,255,0.02) 70%);
+  border-color: rgba(139,92,246,0.1);
+  box-shadow: none;
 }
 
 .dpad-center:active {
   transform: none;
-  box-shadow: inset 0 0 8px rgba(139,92,246,0.08);
-  background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(255,255,255,0.02) 70%);
-  border-color: rgba(139,92,246,0.15);
+  box-shadow: none;
+  background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, rgba(255,255,255,0.02) 70%);
+  border-color: rgba(139,92,246,0.1);
 }
 
 .dpad-up    { grid-column: 2; grid-row: 1; }
@@ -1207,17 +1202,16 @@ button:hover .btn-shine {
 
 /* Win glow on the result panel */
 #result-panel.result-win {
-  border-color: rgba(16, 185, 129, 0.4);
   animation: panelFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1), winPanelGlow 1.5s ease-in-out infinite;
 }
 
 @keyframes winPanelGlow {
-  0%, 100% { box-shadow: 0 0 30px var(--success-glow); }
-  50%      { box-shadow: 0 0 60px var(--success-glow), 0 0 80px rgba(16, 185, 129, 0.15); }
+  0%, 100% { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 30px var(--success-glow); }
+  50%      { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px var(--success-glow), 0 0 80px rgba(16, 185, 129, 0.15); }
 }
 
 #result-panel.result-loss {
-  border-color: rgba(239, 68, 68, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px var(--danger-glow);
 }
 
 #result-glow.win-glow {
@@ -1303,8 +1297,7 @@ button:hover .btn-shine {
 
 #queue-panel {
   background: var(--surface-solid);
-  border-top: 1px solid var(--glass-border);
-  border-bottom: 1px solid var(--glass-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
   padding: 5px 12px;
   flex-shrink: 0;
   overflow: hidden;
@@ -1394,7 +1387,7 @@ button:hover .btn-shine {
 
 .panel {
   background: var(--surface-solid);
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
   padding: 6px 12px;
   padding-bottom: calc(6px + var(--safe-bottom));
   flex-shrink: 0;
@@ -1592,9 +1585,10 @@ button:hover .btn-shine {
   .overlay-panel {
     max-width: 400px;
     padding: 28px;
-    background: rgba(16, 14, 32, 0.72);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    background: rgba(10, 10, 18, 0.65);
+    backdrop-filter: blur(24px) saturate(1.3);
+    -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
   }
 
   /* On desktop, float queue over the video bottom instead of
@@ -1605,11 +1599,10 @@ button:hover .btn-shine {
     left: 0;
     right: 0;
     z-index: 5;
-    background: rgba(10, 10, 15, 0.75);
+    background: rgba(10, 10, 15, 0.70);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-bottom: none;
-    border-top: 1px solid var(--glass-border);
+    border-top: none;
   }
 
   /* History is secondary — hide on desktop to maximize video area */
