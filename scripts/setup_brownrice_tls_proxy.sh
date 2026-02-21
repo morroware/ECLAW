@@ -53,15 +53,56 @@ prompt_yes_no() {
     fi
 }
 
+can_write_file() {
+    local file="$1"
+    [ -w "$file" ]
+}
+
+safe_read() {
+    local file="$1"
+    if can_write_file "$file" || [ -r "$file" ]; then
+        cat "$file"
+    else
+        sudo cat "$file"
+    fi
+}
+
 upsert_env() {
     local file="$1"
     local key="$2"
     local value="$3"
 
-    if grep -Eq "^${key}=" "$file"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    safe_read "$file" | python3 - "$key" "$value" > "$tmp_file" <<'PY'
+import sys
+
+key = sys.argv[1]
+value = sys.argv[2]
+needle = f"{key}="
+
+lines = sys.stdin.read().splitlines()
+out = []
+replaced = False
+
+for line in lines:
+    if line.startswith(needle):
+        out.append(f"{key}={value}")
+        replaced = True
+    else:
+        out.append(line)
+
+if not replaced:
+    out.append(f"{key}={value}")
+
+sys.stdout.write("\n".join(out) + "\n")
+PY
+
+    if can_write_file "$file"; then
+        mv "$tmp_file" "$file"
     else
-        echo "${key}=${value}" >> "$file"
+        sudo mv "$tmp_file" "$file"
     fi
 }
 
@@ -75,6 +116,9 @@ done
 
 require_cmd python3
 require_cmd sudo
+
+info "Running script: $0"
+info "Repository root: $ROOT_DIR"
 
 cat <<'BANNER'
 
@@ -105,7 +149,7 @@ prompt_yes_no PROVISION_BROWNRICE "SSH into Brownrice and install nginx config a
 
 info "Updating Pi app env: $PI_ENV_FILE"
 sudo cp "$PI_ENV_FILE" "${PI_ENV_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-CURRENT_TRUSTED="$(grep -E '^TRUSTED_PROXIES=' "$PI_ENV_FILE" | cut -d= -f2- || true)"
+CURRENT_TRUSTED="$(safe_read "$PI_ENV_FILE" | grep -E '^TRUSTED_PROXIES=' | cut -d= -f2- || true)"
 BASE_TRUSTED="127.0.0.1/32,::1/128"
 if [ -n "$CURRENT_TRUSTED" ]; then
     BASE_TRUSTED="$CURRENT_TRUSTED"
