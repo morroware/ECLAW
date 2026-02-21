@@ -53,40 +53,15 @@ prompt_yes_no() {
     fi
 }
 
-can_write_file() {
-    local file="$1"
-    [ -w "$file" ]
-}
-
-safe_read() {
-    local file="$1"
-    if can_write_file "$file" || [ -r "$file" ]; then
-        cat "$file"
-    else
-        sudo cat "$file"
-    fi
-}
-
 upsert_env() {
     local file="$1"
     local key="$2"
     local value="$3"
 
-    local tmp_file
-    tmp_file="$(mktemp)"
-
-    safe_read "$file" > "$tmp_file"
-
-    if grep -Eq "^${key}=" "$tmp_file"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$tmp_file"
+    if grep -Eq "^${key}=" "$file"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
     else
-        echo "${key}=${value}" >> "$tmp_file"
-    fi
-
-    if can_write_file "$file"; then
-        mv "$tmp_file" "$file"
-    else
-        sudo mv "$tmp_file" "$file"
+        echo "${key}=${value}" >> "$file"
     fi
 }
 
@@ -130,7 +105,7 @@ prompt_yes_no PROVISION_BROWNRICE "SSH into Brownrice and install nginx config a
 
 info "Updating Pi app env: $PI_ENV_FILE"
 sudo cp "$PI_ENV_FILE" "${PI_ENV_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-CURRENT_TRUSTED="$(safe_read "$PI_ENV_FILE" | grep -E '^TRUSTED_PROXIES=' | cut -d= -f2- || true)"
+CURRENT_TRUSTED="$(grep -E '^TRUSTED_PROXIES=' "$PI_ENV_FILE" | cut -d= -f2- || true)"
 BASE_TRUSTED="127.0.0.1/32,::1/128"
 if [ -n "$CURRENT_TRUSTED" ]; then
     BASE_TRUSTED="$CURRENT_TRUSTED"
