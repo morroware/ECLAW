@@ -321,12 +321,24 @@ ${BOLD}Now apply these changes on the Pi:${NC}
 
      sudo systemctl restart claw-server
 
-  3. (Optional) Lock down Pi firewall:
+  3. Forward WebRTC UDP port on your router:
+
+     The video stream uses WebRTC which requires a direct UDP path
+     from browsers to MediaMTX on the Pi (port 8189).
+     Add a port-forward rule on your router:
+
+       UDP 8189  →  <Pi LAN IP>:8189
+
+     Also allow it through the Pi firewall:
+
+       sudo ufw allow 8189/udp
+
+  4. (Optional) Lock down Pi firewall:
 
      sudo ufw allow from ${VM_LAN_IP} to any port ${PI_APP_PORT} proto tcp
      sudo ufw deny ${PI_APP_PORT}/tcp
 
-  4. Test from any browser:
+  5. Test from any browser:
 
      https://${APP_DOMAIN}
      https://${APP_DOMAIN}/api/health
