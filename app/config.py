@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     win_sensor_enabled: bool = True
 
     # GPIO pulse/hold
+    coin_pulses_per_credit: int = 2
     coin_pulse_ms: int = 150
     drop_pulse_ms: int = 200
     drop_hold_max_ms: int = 10000
