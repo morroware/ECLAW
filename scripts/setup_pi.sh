@@ -293,4 +293,6 @@ else
 echo "    2. Test camera: rpicam-still -o /tmp/test.jpg"
 fi
 echo "    3. Connect to http://$PI_IP from any device on your network"
+echo "    4. For internet access: forward UDP port 8189 on your router"
+echo "       to $PI_IP:8189 (required for WebRTC video streaming)"
 echo ""

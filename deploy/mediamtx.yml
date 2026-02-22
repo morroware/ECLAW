@@ -11,6 +11,23 @@ rtspAddress: 127.0.0.1:8554
 
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889
+
+# ICE connectivity for internet access through a reverse proxy.
+#
+# webrtcAdditionalHosts tells MediaMTX to include the public IP/domain
+# in ICE host candidates so remote browsers can reach the WebRTC UDP
+# endpoint.  Without this, ICE candidates only contain 127.0.0.1 and
+# LAN IPs which are unreachable from the internet → black video.
+#
+# Set this to your public domain or IP address:
+webrtcAdditionalHosts:
+  - claw.thecastlefuncenter.com
+
+# Pin all WebRTC UDP traffic to a single port instead of random
+# ephemeral ports.  This allows a single port-forward rule on your
+# router (UDP 8189 → Pi LAN IP) instead of requiring a full-cone NAT.
+webrtcICEUDPMuxAddress: :8189
+
 webrtcICEServers2:
   - url: stun:stun.l.google.com:19302
   - url: stun:stun1.l.google.com:19302
