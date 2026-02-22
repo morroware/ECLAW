@@ -35,6 +35,7 @@ _RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
     "queue_grace_period_seconds":   (0, 3600),
 
     # GPIO pulse/hold — milliseconds, must be positive
+    "coin_pulses_per_credit":       (1, 10),
     "coin_pulse_ms":                (10, 5000),
     "drop_pulse_ms":                (10, 5000),
     "drop_hold_max_ms":             (100, 60000),
@@ -120,6 +121,7 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "win_sensor_enabled":        {"cat": "Timing",          "label": "Win Sensor Enabled",       "desc": "Enable hardware win sensor. When off, the game skips win/loss detection and just advances the queue after the post-drop wait."},
 
     # -- GPIO Pulse/Hold --
+    "coin_pulses_per_credit":    {"cat": "GPIO Pulse/Hold", "label": "Coin Pulses Per Credit",  "desc": "Number of coin relay pulses per credit (e.g. 2 if the machine expects two coins)."},
     "coin_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Coin Pulse (ms)",         "desc": "Duration of the coin credit relay pulse."},
     "drop_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Drop Pulse (ms)",         "desc": "Duration of the drop relay pulse."},
     "drop_hold_max_ms":          {"cat": "GPIO Pulse/Hold", "label": "Drop Hold Max (ms)",      "desc": "Maximum time the drop relay can be held."},

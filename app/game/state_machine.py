@@ -352,8 +352,9 @@ class StateMachine:
         logger.info(f"Starting try {self.current_try}/{self.settings.tries_per_player}")
 
         if self.settings.coin_each_try:
-            await self.gpio.pulse("coin")
-            await asyncio.sleep(self.settings.coin_post_pulse_delay_s)  # Let machine register credit
+            for i in range(self.settings.coin_pulses_per_credit):
+                await self.gpio.pulse("coin")
+                await asyncio.sleep(self.settings.coin_post_pulse_delay_s)  # Let machine register credit
 
         await self._enter_state(TurnState.MOVING)
 
