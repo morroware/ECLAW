@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.admin import admin_router
@@ -255,6 +256,31 @@ app = FastAPI(
     docs_url="/api/docs" if settings.mock_gpio else None,
     redoc_url=None,
 )
+
+
+# -- Embed framing headers middleware -----------------------------------------
+# In dev mode (no nginx), this sets the correct framing headers so embed pages
+# can be loaded in iframes while the main site remains protected.
+
+class EmbedHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/embed/"):
+            origins = settings.embed_allowed_origins.strip()
+            if origins:
+                ancestors = " ".join(o.strip() for o in origins.split(",") if o.strip())
+                csp = f"frame-ancestors 'self' {ancestors}"
+            else:
+                csp = "frame-ancestors *"
+            response.headers["Content-Security-Policy"] = csp
+            # Remove X-Frame-Options if present — CSP frame-ancestors takes over
+            response.headers.pop("X-Frame-Options", None)
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
+        return response
+
+
+app.add_middleware(EmbedHeadersMiddleware)
 
 # CORS
 app.add_middleware(

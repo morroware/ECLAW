@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # Mock mode: set to true when running without real GPIO hardware
     mock_gpio: bool = False
 
+    # -- Embed configuration ---------------------------------------------------
+    embed_allowed_origins: str = ""  # Comma-separated origins allowed to frame embed pages
+
     # -- WLED LED strip integration (optional) --------------------------------
     wled_enabled: bool = False
     wled_device_ip: str = ""

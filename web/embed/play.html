@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Remote Claw Machine — Play</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Orbitron:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="embed.css">
+</head>
+<body>
+  <div id="embed-app" class="embed-app">
+    <!-- ===== GAME AREA ===== -->
+    <div id="stream-container">
+      <video id="stream-video" autoplay playsinline muted></video>
+
+      <!-- HUD Overlays -->
+      <div id="hud-top">
+        <div id="hud-top-left">
+          <div id="live-badge"><span class="live-dot"></span>LIVE</div>
+          <div id="game-state-display"></div>
+        </div>
+        <div id="hud-top-right">
+          <div id="try-display"></div>
+          <div id="timer-display"></div>
+        </div>
+      </div>
+
+      <!-- Current Player Banner -->
+      <div id="current-player-hud" class="hidden">
+        <span class="player-hud-icon">&#127918;</span>
+        <span id="player-hud-name"></span>
+      </div>
+
+      <!-- Stream reconnect button -->
+      <button id="stream-reconnect" class="hidden" type="button" title="Reconnect video stream">
+        &#8635; Reconnect
+      </button>
+
+      <!-- Timer bar -->
+      <div id="timer-bar-container"><div id="timer-bar"></div></div>
+
+      <!-- ===== OVERLAY PANELS ===== -->
+
+      <!-- Join Form -->
+      <div id="join-panel" class="overlay-panel card">
+        <div class="card-glow"></div>
+        <h2>Join the Game</h2>
+        <p class="card-subtitle">Enter your name to get in line and play!</p>
+        <form id="join-form">
+          <input type="text" id="join-name" placeholder="Your name" required minlength="2" maxlength="50" autocomplete="given-name">
+          <input type="email" id="join-email" placeholder="Email address" required autocomplete="email">
+          <button type="submit" id="join-btn">
+            <span class="btn-text">JOIN QUEUE</span>
+            <span class="btn-shine"></span>
+          </button>
+        </form>
+        <p id="join-error" class="error"></p>
+      </div>
+
+      <!-- Waiting Panel -->
+      <div id="waiting-panel" class="overlay-panel card hidden">
+        <div class="card-glow"></div>
+        <div class="waiting-animation">
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring delay"></div>
+          <span class="waiting-icon">&#127918;</span>
+        </div>
+        <h2>You're In Line!</h2>
+        <div class="waiting-stats">
+          <div class="stat">
+            <span class="stat-label">Position</span>
+            <span class="stat-value" id="wait-position">--</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Est. Wait</span>
+            <span class="stat-value" id="wait-time">--</span>
+          </div>
+        </div>
+        <button id="leave-btn">Leave Queue</button>
+      </div>
+
+      <!-- Ready Prompt -->
+      <div id="ready-panel" class="overlay-panel card hidden">
+        <div class="card-glow ready-glow"></div>
+        <div class="ready-alert">
+          <span class="ready-icon">&#127775;</span>
+          <h2>IT'S YOUR TURN!</h2>
+        </div>
+        <p class="ready-subtitle">Get ready to control the claw</p>
+        <button id="ready-btn" class="big-btn ready-btn-pulse">
+          <span class="btn-text">READY</span>
+          <span class="btn-shine"></span>
+        </button>
+        <div id="ready-timer"></div>
+      </div>
+
+      <!-- Turn Result -->
+      <div id="result-panel" class="overlay-panel card hidden">
+        <div class="card-glow" id="result-glow"></div>
+        <div id="result-icon" class="result-icon"></div>
+        <h2 id="result-title"></h2>
+        <p id="result-message"></p>
+        <button id="play-again-btn">
+          <span class="btn-text">PLAY AGAIN</span>
+          <span class="btn-shine"></span>
+        </button>
+      </div>
+
+      <!-- ===== GAME CONTROLS ===== -->
+      <div id="controls-panel" class="hidden">
+        <div id="controls-info">
+          <span id="ctrl-try">Try 1/2</span>
+          <span id="ctrl-timer">30s</span>
+        </div>
+        <div id="controls-layout">
+          <div id="dpad-wrapper">
+            <div id="dpad" data-dpad>
+              <div class="dpad-btn dpad-up" data-dir="north">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                <span class="key-label">W</span>
+              </div>
+              <div class="dpad-btn dpad-left" data-dir="west">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                <span class="key-label">A</span>
+              </div>
+              <div class="dpad-btn dpad-center"></div>
+              <div class="dpad-btn dpad-right" data-dir="east">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <span class="key-label">D</span>
+              </div>
+              <div class="dpad-btn dpad-down" data-dir="south">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                <span class="key-label">S</span>
+              </div>
+            </div>
+          </div>
+          <button id="drop-btn" class="drop-btn" tabindex="-1">
+            <span class="drop-btn-icon">&#9660;</span>
+            DROP
+            <span class="key-hint">SPACE</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue info bar -->
+    <div id="queue-panel">
+      <div id="queue-info">
+        <span id="queue-length">Queue: 0</span>
+        <span id="current-player-display"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen flash overlay -->
+  <div id="screen-flash" aria-hidden="true"></div>
+
+  <script src="/sounds.js"></script>
+  <script src="/stream.js"></script>
+  <script src="/controls.js"></script>
+  <script src="/keyboard.js"></script>
+  <script src="/touch_dpad.js"></script>
+  <script src="embed-play.js"></script>
+</body>
+</html>
