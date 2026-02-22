@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Remote Claw Machine — Live Stream</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="embed.css">
+</head>
+<body>
+  <div id="embed-app" class="embed-app">
+    <!-- Video Stream -->
+    <div id="stream-container">
+      <video id="stream-video" autoplay playsinline muted></video>
+
+      <!-- HUD Overlays on video -->
+      <div id="hud-top">
+        <div id="hud-top-left">
+          <div id="live-badge"><span class="live-dot"></span>LIVE</div>
+          <div id="game-state-display"></div>
+        </div>
+        <div id="hud-top-right">
+          <div id="try-display"></div>
+          <div id="timer-display"></div>
+        </div>
+      </div>
+
+      <!-- Current Player Banner -->
+      <div id="current-player-hud" class="hidden">
+        <span class="player-hud-icon">&#127918;</span>
+        <span id="player-hud-name"></span>
+      </div>
+
+      <!-- Stream reconnect button -->
+      <button id="stream-reconnect" class="hidden" type="button" title="Reconnect video stream">
+        &#8635; Reconnect
+      </button>
+
+      <!-- Timer bar -->
+      <div id="timer-bar-container"><div id="timer-bar"></div></div>
+    </div>
+
+    <!-- Compact footer -->
+    <div id="embed-footer">
+      <span id="connection-status" class="status-dot disconnected"></span>
+      <span id="viewer-count">0</span>
+      <span id="queue-length">Queue: 0</span>
+      <span class="spacer"></span>
+      <a id="play-link" href="" target="_blank" rel="noopener">Play Now &#8594;</a>
+    </div>
+  </div>
+
+  <script src="/stream.js"></script>
+  <script src="embed-watch.js"></script>
+</body>
+</html>
