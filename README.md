@@ -76,6 +76,8 @@ app/                    FastAPI backend (API, game logic, GPIO, camera, WebSocke
   ws/                   WebSocket hubs (status broadcast + player control)
   camera.py             Built-in camera capture with device + RTSP fallback (MJPEG)
 web/                    Browser UI (vanilla JS, no build step)
+  embed/                Embeddable iframe pages (watch + interactive play)
+wordpress/              WordPress shortcode plugin for embedding
 watchdog/               Independent GPIO safety monitor
 migrations/             SQLite schema
 deploy/                 nginx, systemd, MediaMTX configs
@@ -128,6 +130,11 @@ All settings are in `.env` (copied from `.env.example` during install). Key sett
 | `PORT` | `8000` | `8000` | Server listen port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
 | `TRUSTED_PROXIES` | `""` (empty) | `127.0.0.1/32,::1/128` | Comma-separated CIDRs of trusted reverse proxies. `.env.example` assumes nginx on localhost; empty = ignore X-Forwarded-For (safe when not behind a proxy). |
+| `WIN_SENSOR_ENABLED` | `true` | `true` | Enable hardware win sensor. When off, the game skips win/loss detection and advances the queue after the post-drop wait. |
+| `COIN_PULSES_PER_CREDIT` | `2` | `2` | Number of coin relay pulses per credit (e.g. 2 if the machine expects two coins). |
+| `EMBED_ALLOWED_ORIGINS` | `""` (empty) | `""` (empty) | Comma-separated origins allowed to frame embed pages. Empty = allow all. |
+| `WLED_ENABLED` | `false` | `false` | Enable optional WLED LED strip integration. |
+| `WLED_DEVICE_IP` | `""` (empty) | `""` (empty) | IP address of the WLED device on your network. |
 
 > **Note:** "Code Default" is the fallback value in `app/config.py` when a key is absent from `.env`. "`.env.example` Default" is the value shipped in the template that `install.sh` copies to `.env`. When running without an `.env` file the code defaults apply.
 
@@ -172,6 +179,11 @@ Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/
 | PUT | `/admin/config` | Update config values (persists to `.env`) |
 | POST | `/admin/kick/{entry_id}` | Remove a specific player from the queue |
 | GET | `/admin/queue-details` | Detailed queue entries with IDs for admin actions |
+| GET | `/admin/wled/test` | Test WLED device connection |
+| POST | `/admin/wled/preset/{preset_id}` | Trigger a WLED preset (1–250) |
+| POST | `/admin/wled/on` | Turn WLED strip on |
+| POST | `/admin/wled/off` | Turn WLED strip off |
+| GET | `/admin/contacts/csv` | Download contacts as CSV |
 
 ### Admin Panel
 
@@ -294,9 +306,87 @@ Remote Claw includes a `SoundEngine` (Web Audio API) that provides synthesized s
 
 ---
 
+## Embeddable Views
+
+Remote Claw can be embedded on external websites via iframe. Two embed modes are available:
+
+### Watch-Only (spectator stream)
+
+```html
+<iframe src="https://claw.yourdomain.com/embed/watch"
+        width="100%" height="360" frameborder="0"
+        allow="autoplay; encrypted-media" allowfullscreen
+        style="border:0; border-radius:8px; max-width:100%;"
+        loading="lazy" title="Remote Claw Machine"></iframe>
+```
+
+Displays the live camera stream with a HUD overlay showing game state, timer, try counter, queue length, and viewer count. Sends `postMessage` events to the parent page for integration.
+
+### Interactive (join queue + play)
+
+```html
+<iframe src="https://claw.yourdomain.com/embed/play"
+        width="100%" height="600" frameborder="0"
+        allow="autoplay; encrypted-media" allowfullscreen
+        style="border:0; border-radius:8px; max-width:100%;"
+        loading="lazy" title="Remote Claw Machine"></iframe>
+```
+
+Full game experience: join queue, wait for turn, control the claw with D-pad/keyboard, drop, and see results — all within the iframe. Uses `sessionStorage` for cross-origin safety. Supports sound effects, haptic feedback, and a `postMessage` API for bi-directional communication with the parent page.
+
+### Customization
+
+Both embeds accept query parameters for theming: `theme` (dark/light), `accent` (hex color), `bg` (hex color), `footer` (show/hide), `sounds` (on/off). The parent page can also send `postMessage` commands to programmatically join or leave the queue.
+
+Set `EMBED_ALLOWED_ORIGINS` in `.env` to restrict which sites can frame the embeds (empty = allow all).
+
+A **WordPress shortcode plugin** is included at `wordpress/eclaw-embed.php`. See **[docs/wordpress-embed.md](docs/wordpress-embed.md)** for the full embed guide including query parameters, postMessage API reference, and WordPress setup.
+
+---
+
+## WLED Integration
+
+Remote Claw optionally controls a [WLED](https://kno.wled.ge/) LED strip to provide ambient lighting effects during gameplay. When enabled, the server sends fire-and-forget HTTP requests to the WLED device — failures are logged but never interrupt the game.
+
+### Setup
+
+1. Set up your WLED device and configure lighting presets in the WLED web UI (presets 1–250)
+2. Enable integration in `.env`:
+   ```ini
+   WLED_ENABLED=true
+   WLED_DEVICE_IP=192.168.1.100
+   ```
+3. Map game events to WLED preset IDs (0 = skip event):
+   ```ini
+   WLED_PRESET_WIN=1
+   WLED_PRESET_LOSS=2
+   WLED_PRESET_DROP=3
+   WLED_PRESET_START_TURN=4
+   WLED_PRESET_IDLE=5
+   WLED_PRESET_EXPIRE=0
+   ```
+
+### Events
+
+| Event | Triggered When |
+|-------|---------------|
+| `start_turn` | Player starts moving the claw |
+| `drop` | Player drops the claw |
+| `win` | Prize detected by win sensor |
+| `loss` | No prize detected after drop |
+| `idle` | Turn ends, machine returns to idle |
+| `expire` | Player's turn expires (timeout) |
+
+### Admin Controls
+
+The admin panel includes a **WLED Lights** section for testing: verify device connection (shows device name, version, LED count), trigger specific presets, and turn the strip on/off. Admin API endpoints are also available (`/admin/wled/test`, `/admin/wled/preset/{id}`, `/admin/wled/on`, `/admin/wled/off`).
+
+---
+
 ## Documentation
 
 - **[QUICKSTART.md](QUICKSTART.md)** — Step-by-step setup, wiring, camera configuration, and troubleshooting
+- **[docs/wordpress-embed.md](docs/wordpress-embed.md)** — Embeddable views guide: iframe snippets, WordPress shortcode plugin, query parameters, postMessage API
 - **[docs/queue-flow.md](docs/queue-flow.md)** — Complete architecture reference with Mermaid flow charts:
   - System architecture diagram
   - **Single Source of Truth (SSOT) design** — what is authoritative where
