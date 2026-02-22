@@ -92,9 +92,16 @@ establish WebRTC connections.
 # Back up current config
 sudo cp /etc/mediamtx.yml /etc/mediamtx.yml.bak
 
-# Copy the updated config from the repo
-# (use mediamtx.yml for Pi Camera, mediamtx-usb.yml for USB cameras)
-sudo cp deploy/mediamtx.yml /etc/mediamtx.yml
+# Detect your camera type first:
+rpicam-hello --list-cameras 2>&1 | head -3   # RPi camera?
+ls /dev/video*                                 # USB camera?
+
+# Copy the correct config:
+# For RPi Camera module:
+sudo cp ~/ECLAW/deploy/mediamtx.yml /etc/mediamtx.yml
+
+# For USB camera (most common — use this if unsure):
+sudo cp ~/ECLAW/deploy/mediamtx-usb.yml /etc/mediamtx.yml
 ```
 
 Or if you prefer to edit manually, add these lines to `/etc/mediamtx.yml`:
@@ -123,11 +130,17 @@ Restart MediaMTX:
 sudo systemctl restart mediamtx
 ```
 
-Verify it's running:
+Verify it's running and the camera is detected:
 
 ```bash
 sudo systemctl status mediamtx
 # Should show "active (running)"
+
+# Check for camera errors:
+sudo journalctl -u mediamtx --no-pager -n 20
+# If you see "camera_create(): selected camera is not available" you
+# deployed the WRONG config (RPi camera config but USB camera connected,
+# or vice versa). Switch to the correct one and restart.
 ```
 
 ## Step 3: Forward UDP port on the router
@@ -161,9 +174,12 @@ curl -v -X POST https://claw.thecastlefuncenter.com/stream/cam/whep \
   -d "v=0"
 ```
 
-**Expected:** You should get an HTTP response (likely 400 or 200 with SDP) —
-**not** a connection refused or 502 error. Any response from MediaMTX means the
-proxy chain is working.
+**Expected responses:**
+- **201** — Working! WHEP session created successfully.
+- **405** — MediaMTX has no active camera source. Wrong mediamtx config
+  for your camera type, or camera not connected. Check `sudo journalctl -u mediamtx`.
+- **502** — FastAPI can't reach MediaMTX. Is mediamtx running?
+- **Connection refused / timeout** — nginx can't reach FastAPI. Check Pi IP and port.
 
 ### Test in the browser
 
