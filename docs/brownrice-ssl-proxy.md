@@ -115,6 +115,24 @@ server {
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
 
+    # -- Embed pages: allow framing from external sites --
+    # Must appear before the catch-all / location so nginx matches it first.
+    location /embed/ {
+        proxy_pass http://PI_LAN_IP:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        # Override server-level headers: allow framing via CSP frame-ancestors,
+        # and permit Google Fonts used by the embed pages.
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self' wss: ws:; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; frame-ancestors *" always;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    }
+
     # -- App: API + static frontend --
     location / {
         proxy_pass http://PI_LAN_IP:8000;
