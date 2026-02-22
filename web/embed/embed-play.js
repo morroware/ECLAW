@@ -71,15 +71,12 @@
   var joinError = $("#join-error");
   var joinBtn = $("#join-btn");
   var queueLength = $("#queue-length");
-  var currentPlayerDisplay = $("#current-player-display");
   var gameStateDisplay = $("#game-state-display");
   var timerDisplay = $("#timer-display");
   var timerBar = $("#timer-bar");
   var streamContainer = $("#stream-container");
   var dropBtn = $("#drop-btn");
   var screenFlash = $("#screen-flash");
-  var currentPlayerHud = $("#current-player-hud");
-  var playerHudName = $("#player-hud-name");
   var streamReconnectBtn = $("#stream-reconnect");
 
   // -- Initialization ------------------------------------------------------
@@ -126,10 +123,6 @@
 
       if (msg.type === "queue_update") {
         queueLength.textContent = "Queue: " + msg.queue_length;
-        currentPlayerDisplay.textContent = msg.current_player
-          ? "Playing: " + msg.current_player : "";
-
-        updateCurrentPlayerHud(msg.current_player);
 
         if (msg.viewer_count != null) {
           notifyParent("queue_update", {
@@ -168,18 +161,6 @@
     };
 
     statusWs.onerror = function () {};
-  }
-
-  // -- Current Player HUD --------------------------------------------------
-
-  function updateCurrentPlayerHud(name) {
-    if (!currentPlayerHud || !playerHudName) return;
-    if (name) {
-      playerHudName.textContent = name;
-      currentPlayerHud.classList.remove("hidden");
-    } else {
-      currentPlayerHud.classList.add("hidden");
-    }
   }
 
   // -- Video Stream --------------------------------------------------------

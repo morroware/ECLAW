@@ -36,8 +36,6 @@
   var timerDisplay = $("#timer-display");
   var tryDisplay = $("#try-display");
   var timerBar = $("#timer-bar");
-  var currentPlayerHud = $("#current-player-hud");
-  var playerHudName = $("#player-hud-name");
   var footer = $("#embed-footer");
   var playLink = $("#play-link");
   var streamReconnectBtn = $("#stream-reconnect");
@@ -161,14 +159,6 @@
       if (msg.type === "queue_update") {
         queueLength.textContent = "Queue: " + msg.queue_length;
 
-        // Current player HUD
-        if (msg.current_player) {
-          playerHudName.textContent = msg.current_player;
-          currentPlayerHud.classList.remove("hidden");
-        } else {
-          currentPlayerHud.classList.add("hidden");
-        }
-
         if (msg.viewer_count != null) {
           viewerCount.textContent = msg.viewer_count + " viewer" + (msg.viewer_count !== 1 ? "s" : "");
         }
@@ -231,10 +221,6 @@
   }).then(function (data) {
     if (!data) return;
     queueLength.textContent = "Queue: " + (data.queue_length || 0);
-    if (data.current_player) {
-      playerHudName.textContent = data.current_player;
-      currentPlayerHud.classList.remove("hidden");
-    }
     if (data.current_player_state) {
       gameStateDisplay.textContent = stateLabels[data.current_player_state] || "";
     }

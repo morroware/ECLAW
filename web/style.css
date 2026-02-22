@@ -445,50 +445,6 @@ input, textarea {
   line-height: 1;
 }
 
-/* -- Current Player HUD Banner ------------------------------------------- */
-
-#current-player-hud {
-  position: absolute;
-  bottom: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 14px 4px 10px;
-  background: rgba(0, 0, 0, 0.8);
-  /* No backdrop-filter — causes black video on mobile (WebKit compositing bug) */
-  border: none;
-  border-radius: 20px;
-  pointer-events: none;
-  animation: playerHudSlideIn 0.4s ease-out;
-  white-space: nowrap;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-}
-
-#current-player-hud.hidden {
-  display: none !important;
-}
-
-.player-hud-icon {
-  font-size: 0.9rem;
-}
-
-#player-hud-name {
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: var(--primary-bright);
-  letter-spacing: 1px;
-  text-shadow: 0 0 10px var(--primary-glow);
-}
-
-@keyframes playerHudSlideIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
 /* Timer bar at bottom of video */
 #timer-bar-container {
   position: absolute;
@@ -1310,159 +1266,6 @@ button:hover .btn-shine {
   color: var(--text-dim);
 }
 
-#current-player-display {
-  color: var(--primary-bright);
-  font-weight: 600;
-}
-
-#queue-list-container {
-  margin-top: 3px;
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-}
-
-/* Show queue list when there are entries */
-#queue-panel:hover #queue-list-container,
-#queue-panel:focus-within #queue-list-container {
-  max-height: 200px;
-}
-
-#queue-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.queue-entry {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.03);
-  font-size: 0.7rem;
-  transition: all var(--transition);
-  border-left: 3px solid transparent;
-}
-
-.queue-entry.state-active {
-  background: var(--primary-dim);
-  border-left-color: var(--primary);
-}
-
-.queue-entry.state-ready {
-  background: rgba(16, 185, 129, 0.1);
-  border-left-color: var(--success);
-}
-
-.queue-name {
-  font-weight: 500;
-  color: var(--text);
-}
-
-.queue-state {
-  font-family: var(--font-display);
-  font-size: 0.5rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-}
-
-.state-active .queue-state { color: var(--primary-bright); }
-.state-ready .queue-state  { color: var(--success); }
-
-.queue-empty {
-  color: var(--text-dim);
-  font-size: 0.7rem;
-  padding: 3px 0;
-  text-align: center;
-}
-
-/* ==========================================================================
-   HISTORY PANEL — Minimal at bottom
-   ========================================================================== */
-
-.panel {
-  background: var(--surface-solid);
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 6px 12px;
-  padding-bottom: calc(6px + var(--safe-bottom));
-  flex-shrink: 0;
-}
-
-.panel h2 {
-  font-family: var(--font-display);
-  font-size: 0.55rem;
-  font-weight: 600;
-  letter-spacing: 2px;
-  margin-bottom: 4px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-#history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  max-height: 72px;
-  overflow-y: auto;
-}
-
-.history-entry {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  font-size: 0.7rem;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-}
-
-.history-entry:last-child {
-  border-bottom: none;
-}
-
-.history-result {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  min-width: 32px;
-  height: 16px;
-  border-radius: 4px;
-  font-family: var(--font-display);
-  font-size: 0.45rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.result-win {
-  background: rgba(16, 185, 129, 0.2);
-  color: var(--success);
-}
-
-.result-loss {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--danger);
-}
-
-.history-name {
-  flex: 1;
-  font-weight: 500;
-  color: var(--text);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-meta {
-  color: var(--text-muted);
-  font-size: 0.6rem;
-  flex-shrink: 0;
-}
 
 /* ==========================================================================
    RESPONSIVE — Mobile-first adjustments
@@ -1537,8 +1340,6 @@ button:hover .btn-shine {
   #queue-panel { padding: 3px 10px; }
   #queue-info { font-size: 0.65rem; }
 
-  #history-panel { display: none; }
-
   .overlay-panel {
     padding: 16px;
     max-width: 320px;
@@ -1553,13 +1354,6 @@ button:hover .btn-shine {
   #result-panel h2 { font-size: 1.3rem; }
   .result-icon { font-size: 2.2rem; }
   #result-message { font-size: 0.8rem; margin-bottom: 10px; }
-
-  #current-player-hud {
-    bottom: 4px;
-    padding: 3px 10px 3px 8px;
-  }
-  #player-hud-name { font-size: 0.55rem; }
-  .player-hud-icon { font-size: 0.75rem; }
 }
 
 /* Wider desktop — slightly larger D-pad, glass overlays, full-height video */
@@ -1605,10 +1399,6 @@ button:hover .btn-shine {
     border-top: none;
   }
 
-  /* History is secondary — hide on desktop to maximize video area */
-  #history-panel {
-    display: none;
-  }
 }
 
 /* Large desktop */
@@ -1655,7 +1445,6 @@ button:hover .btn-shine {
   }
 
   #queue-panel { display: none; }
-  #history-panel { display: none; }
 
   .overlay-panel {
     padding: 12px 18px;
@@ -1685,12 +1474,6 @@ button:hover .btn-shine {
   #live-badge { font-size: 0.4rem; padding: 2px 5px; }
   #timer-display { font-size: 1rem; }
 
-  #current-player-hud {
-    bottom: 3px;
-    padding: 2px 8px 2px 6px;
-  }
-  #player-hud-name { font-size: 0.5rem; }
-  .player-hud-icon { font-size: 0.7rem; }
 }
 
 /* ==========================================================================
