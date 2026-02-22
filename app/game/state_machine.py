@@ -556,7 +556,7 @@ class StateMachine:
                             await self._end_turn("loss")
                         else:
                             logger.info("Win sensor disabled — all tries used, ending turn")
-                            await self._end_turn("loss")
+                            await self._end_turn("done")
         except asyncio.CancelledError:
             pass
         except Exception:
