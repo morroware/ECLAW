@@ -133,6 +133,10 @@ class Settings(BaseSettings):
     camera_max_consecutive_failures: int = 100
     camera_jpeg_quality: int = 80
 
+    # -- Profanity filter -----------------------------------------------------
+
+    profanity_filter_enabled: bool = True
+
     # -- Rate limiting --------------------------------------------------------
 
     rate_limit_window_s: int = 3600

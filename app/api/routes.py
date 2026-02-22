@@ -10,6 +10,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from better_profanity import profanity
 from app.config import settings
 from app.database import hash_token
 
@@ -224,6 +225,8 @@ async def queue_join(body: JoinRequest, request: Request):
     normalized_name = _NAME_UNSAFE.sub("", body.name.strip())
     if len(normalized_name) < 2:
         raise HTTPException(400, "Name must be at least 2 characters (no HTML allowed)")
+    if settings.profanity_filter_enabled and profanity.contains_profanity(normalized_name):
+        raise HTTPException(400, "Name contains inappropriate language. Please choose another name.")
     normalized_email = body.email.strip().lower()
 
     ip = _get_client_ip(request)
