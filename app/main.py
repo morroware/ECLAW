@@ -269,9 +269,20 @@ class EmbedHeadersMiddleware(BaseHTTPMiddleware):
             origins = settings.embed_allowed_origins.strip()
             if origins:
                 ancestors = " ".join(o.strip() for o in origins.split(",") if o.strip())
-                csp = f"frame-ancestors 'self' {ancestors}"
+                frame_ancestors = f"'self' {ancestors}"
             else:
-                csp = "frame-ancestors *"
+                frame_ancestors = "*"
+            # Full CSP matching the nginx config — allows Google Fonts used
+            # by the embed pages and permits WebSocket connections.
+            csp = (
+                "default-src 'self'; "
+                "connect-src 'self' wss: ws:; "
+                "img-src 'self' data:; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "script-src 'self'; "
+                f"frame-ancestors {frame_ancestors}"
+            )
             response.headers["Content-Security-Policy"] = csp
             # Remove X-Frame-Options if present — CSP frame-ancestors takes over
             response.headers.pop("X-Frame-Options", None)

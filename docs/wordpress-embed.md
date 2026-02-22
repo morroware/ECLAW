@@ -144,32 +144,101 @@ By default, the embed pages allow framing from any origin (`frame-ancestors *`).
 EMBED_ALLOWED_ORIGINS=https://mysite.com,https://www.mysite.com
 ```
 
+### Direct Access (no nginx)
+
+When accessing the ECLAW server directly on port 8000 (without nginx), the
+FastAPI `EmbedHeadersMiddleware` handles framing headers and CSP automatically.
+No extra configuration is needed — the embed pages work out of the box.
+
+Verify the embed is reachable by opening the URL directly in a browser:
+
+```
+http://<YOUR_SERVER_IP>:8000/embed/play
+```
+
+You should see the join form overlaid on the stream. If you get a connection
+error, the FastAPI server is not running or the port is blocked.
+
 ### nginx
 
-The `deploy/nginx/claw.conf` includes an `/embed/` location block that allows framing. If you use a custom nginx config, ensure the embed paths do NOT have `X-Frame-Options: DENY` and include a `Content-Security-Policy` header with `frame-ancestors`.
+All three nginx configs (`claw.conf`, `claw-lan.conf`, `claw-proxy.conf`)
+include an `/embed/` location block that:
+
+1. Overrides the server-level `X-Frame-Options: DENY` for embed pages
+2. Sets a `Content-Security-Policy` with `frame-ancestors *` (or your specified origins)
+3. Allows Google Fonts loading (used by the embed UI)
+4. Resolves extensionless URLs (`/embed/play` → `/embed/play.html`)
+
+If you use a custom nginx config, ensure the embed paths do NOT inherit
+`X-Frame-Options: DENY` from the server block and include the full CSP header.
+See any of the provided configs for the exact directives.
 
 ---
 
 ## Troubleshooting
 
+### "Invalid response" / connection error
+
+This usually means the browser cannot load the embed page at all:
+
+1. **Server not running** — verify the ECLAW server is up:
+   ```bash
+   curl -s -o /dev/null -w "%{http_code}" http://<SERVER_IP>:8000/embed/play
+   ```
+   You should get `200`. If you get `000` or a connection error, start the server
+   (`make run` or `uvicorn app.main:app`).
+
+2. **Port blocked** — if the server is running but you get no response from an
+   external machine, check your firewall allows inbound traffic on port 8000
+   (or whichever port you use):
+   ```bash
+   sudo ufw allow 8000/tcp   # Ubuntu/Debian
+   ```
+
+3. **nginx returning 404 for embed paths** — if you see a 404 or JSON
+   `{"detail":"Not Found"}` when opening `/embed/play`, your nginx `/embed/`
+   location block may be missing `$uri.html` in the `try_files` directive.
+   The correct directive is:
+   ```nginx
+   try_files $uri $uri.html $uri/ =404;
+   ```
+
 ### iframe blocked / blank
 
-- Check browser console for `X-Frame-Options` or `frame-ancestors` errors
-- Ensure your ECLAW nginx config has the `/embed/` location block (see `deploy/nginx/claw.conf`)
-- If using `EMBED_ALLOWED_ORIGINS`, verify your WordPress domain is listed
+- Open your browser's developer console (F12) and check for errors
+- Look for `X-Frame-Options` or `frame-ancestors` CSP violations
+- Ensure your nginx config has the `/embed/` location block — without it, the
+  server-level `X-Frame-Options: DENY` blocks all framing
+- If using `EMBED_ALLOWED_ORIGINS`, verify your embedding site's origin is listed
+  (must match exactly, including protocol: `https://mysite.com`)
+
+### Mixed content (HTTPS page embedding HTTP iframe)
+
+Browsers block "mixed content" — an HTTPS page cannot load an HTTP iframe.
+
+- If your embedding site (e.g., WordPress) uses HTTPS, the ECLAW server **must
+  also be HTTPS**. Use the `claw.conf` or `claw-proxy.conf` nginx config with
+  a TLS certificate (e.g., Let's Encrypt).
+- Accessing the ECLAW server by raw IP + port (`http://1.2.3.4:8000`) will
+  always be HTTP. This works when the embedding page is also HTTP, but fails
+  when the embedding page is HTTPS.
+- For production, always use a domain name with TLS.
 
 ### No video / black screen
 
 - The iframe needs `allow="autoplay; encrypted-media"` — included in both the shortcode and example code
 - Video is muted by default (required for autoplay to work in browsers)
-- Check that MediaMTX is running and the `/stream/cam/whep` endpoint is reachable
-
-### Mixed content (HTTP site embedding HTTPS stream)
-
-- Your WordPress site should use HTTPS to avoid mixed-content blocking
-- The ECLAW server must be HTTPS for WebRTC to work reliably
+- Check that MediaMTX is running and the `/stream/cam/whep` endpoint is reachable:
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8889/cam/whep
+  ```
+- If MediaMTX is not running, the stream shows a black screen but the game
+  controls (join form, queue, D-pad) still work normally
 
 ### Storage issues in iframes
 
 - The play embed uses `sessionStorage` (not `localStorage`) to avoid cross-origin storage restrictions
 - Session is not persisted across page reloads — this is by design for iframe contexts
+- Some browsers with strict third-party cookie settings may restrict
+  `sessionStorage` in cross-origin iframes — players can still use the embed
+  but won't auto-rejoin on refresh
