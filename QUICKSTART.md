@@ -86,6 +86,8 @@ Open http://localhost:8000/admin/panel in your browser. Enter the admin API key 
 - **Game Controls** — Skip player, pause/resume queue, emergency stop, unlock GPIO
 - **Queue Management** — View all players with IDs, kick individual players
 - **Configuration** — Edit any server setting in real time; changes are saved to `.env`
+- **WLED Lights** — Test connection, trigger presets, turn on/off (when WLED is enabled)
+- **Contacts** — Download collected contact information as CSV
 
 For production, change the `ADMIN_API_KEY` in `.env` before sharing access.
 
@@ -343,6 +345,21 @@ Remote Claw plays synthesized sound effects for game events (join, your-turn, dr
 3. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`
 
 Example: To use a custom win sound, place a file named `win.mp3` in `web/sounds/`. The engine checks for custom files on page load and falls back to synthesized sounds for any event without a custom file. Players can mute all sounds via a toggle in the UI.
+
+---
+
+## Embedding on Other Sites
+
+Remote Claw includes embeddable iframe pages for integrating the live stream or full interactive player on external websites:
+
+- **Watch-only** (`/embed/watch`) — Spectator view with live stream and HUD overlay
+- **Interactive** (`/embed/play`) — Full game experience: join queue, control the claw, see results
+
+Both embeds support theming via query parameters (`theme`, `accent`, `bg`) and communicate with the parent page via `postMessage`. A WordPress shortcode plugin is included at `wordpress/eclaw-embed.php`.
+
+To restrict which sites can embed: set `EMBED_ALLOWED_ORIGINS` in `.env` (comma-separated origins, or leave empty to allow all).
+
+See **[docs/wordpress-embed.md](docs/wordpress-embed.md)** for iframe snippets, query parameters, the postMessage API, and WordPress setup instructions.
 
 ---
 

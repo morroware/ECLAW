@@ -581,6 +581,11 @@ flowchart LR
 | POST | `/admin/kick/{entry_id}` | Remove a specific player by entry ID |
 | GET | `/admin/queue-details` | Detailed queue entries with IDs, emails, IPs |
 | GET | `/admin/panel` | Web-based admin panel (HTML; no auth header — JS handles auth client-side) |
+| GET | `/admin/wled/test` | Test WLED device connection |
+| POST | `/admin/wled/preset/{preset_id}` | Trigger a WLED preset (1–250) |
+| POST | `/admin/wled/on` | Turn WLED strip on |
+| POST | `/admin/wled/off` | Turn WLED strip off |
+| GET | `/admin/contacts/csv` | Download contacts as CSV file |
 
 ---
 
@@ -740,6 +745,7 @@ sequenceDiagram
 | `POST_DROP_WAIT_SECONDS` | 8 | Wait after drop for win sensor |
 | `READY_PROMPT_SECONDS` | 15 | Time to confirm readiness |
 | `QUEUE_GRACE_PERIOD_SECONDS` | 300 | Disconnect reconnection window |
+| `WIN_SENSOR_ENABLED` | true | Enable hardware win sensor (off = skip win/loss detection) |
 
 #### GPIO
 | Variable | Default | Description |
@@ -752,6 +758,7 @@ sequenceDiagram
 | `PIN_DROP` | 25 | Drop mechanism relay |
 | `PIN_WIN` | 16 | Win sensor input |
 | `RELAY_ACTIVE_LOW` | true | Active-low for SainSmart boards |
+| `COIN_PULSES_PER_CREDIT` | 2 | Number of coin relay pulses per credit |
 | `COIN_PULSE_MS` | 150 | Coin pulse duration |
 | `DROP_PULSE_MS` | 200 | Drop pulse duration |
 | `DROP_HOLD_MAX_MS` | 10000 | Max drop hold time |
@@ -781,6 +788,23 @@ sequenceDiagram
 |----------|---------|-------------|
 | `MEDIAMTX_HEALTH_URL` | http://127.0.0.1:8889/v3/paths/list | MediaMTX health endpoint |
 | `CAMERA_DEVICE` | 0 | /dev/videoN index for MJPEG fallback |
+
+#### Embed
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBED_ALLOWED_ORIGINS` | *(empty)* | Comma-separated origins allowed to frame embed pages (empty = allow all) |
+
+#### WLED
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WLED_ENABLED` | false | Enable WLED LED strip integration |
+| `WLED_DEVICE_IP` | *(empty)* | WLED device IP address |
+| `WLED_PRESET_WIN` | 0 | Preset ID for win event (0 = disabled) |
+| `WLED_PRESET_LOSS` | 0 | Preset ID for loss event |
+| `WLED_PRESET_DROP` | 0 | Preset ID for drop event |
+| `WLED_PRESET_START_TURN` | 0 | Preset ID for turn start event |
+| `WLED_PRESET_IDLE` | 0 | Preset ID for idle event |
+| `WLED_PRESET_EXPIRE` | 0 | Preset ID for expire event |
 
 #### Watchdog
 | Variable | Default | Description |
