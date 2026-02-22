@@ -812,7 +812,7 @@
           } else if (result === "loss") {
             icon.textContent = "\u{1F61E}";
             icon.classList.add("loss-icon");
-            title.textContent = "No Luck";
+            title.textContent = "😞";
             title.className = "loss";
             glow.classList.add("loss-glow");
             resultPanel.classList.add("result-loss");
