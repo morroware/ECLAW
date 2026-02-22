@@ -373,6 +373,46 @@ async def test_xff_ignored_when_trusted_proxies_empty(api_client):
         settings.trusted_proxies = original_tp
 
 
+# ===========================================================================
+# Profanity Filter Tests
+# ===========================================================================
+
+
+@pytest.mark.anyio
+async def test_profanity_name_rejected(api_client):
+    """Names containing profanity should be rejected with 400."""
+    res = await api_client.post(
+        "/api/queue/join",
+        json={"name": "damn player", "email": "profane@example.com"},
+    )
+    assert res.status_code == 400
+    assert "inappropriate language" in res.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_clean_name_accepted(api_client):
+    """Normal, clean names should be accepted."""
+    res = await api_client.post(
+        "/api/queue/join",
+        json={"name": "FriendlyPlayer", "email": "clean@example.com"},
+    )
+    assert res.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_profanity_filter_disabled(api_client):
+    """When profanity_filter_enabled=False, profane names should be allowed."""
+    original = settings.profanity_filter_enabled
+    settings.profanity_filter_enabled = False
+    try:
+        res = await api_client.post(
+            "/api/queue/join",
+            json={"name": "damn player", "email": "nofilter@example.com"},
+        )
+        assert res.status_code == 200
+    finally:
+        settings.profanity_filter_enabled = original
+
 @pytest.mark.anyio
 async def test_xff_used_when_trusted_proxies_match(api_client):
     """When TRUSTED_PROXIES matches the direct connection IP,

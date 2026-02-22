@@ -8,3 +8,4 @@ httpx==0.28.*
 gpiozero==2.0.*
 python-multipart==0.0.19
 opencv-python-headless>=4.8,<5.0
+better-profanity==0.7.*
