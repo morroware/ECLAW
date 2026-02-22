@@ -753,6 +753,109 @@
     });
   }
 
+  // -- WLED Integration -------------------------------------------------------
+
+  function showWledFeedback(message, type) {
+    const fb = $("#wled-feedback");
+    if (!fb) return;
+    fb.classList.remove("hidden", "success", "error");
+    fb.classList.add(type);
+    fb.textContent = message;
+    setTimeout(() => fb.classList.add("hidden"), 6000);
+  }
+
+  if ($("#wled-test-conn")) {
+    $("#wled-test-conn").addEventListener("click", async function () {
+      const statusEl = $("#wled-status");
+      this.disabled = true;
+      try {
+        const res = await api("GET", "/admin/wled/test");
+        const data = await res.json();
+        if (data.ok && data.info) {
+          const info = data.info;
+          statusEl.innerHTML =
+            '<span style="color:var(--clr-success)">Connected</span>' +
+            ` &mdash; ${escapeHtml(info.name)} (v${escapeHtml(info.version)}, ${info.led_count} LEDs)`;
+          showWledFeedback("Connection successful!", "success");
+          toast("WLED device connected.", "success");
+        } else {
+          statusEl.innerHTML = '<span style="color:var(--clr-danger)">Failed</span>' +
+            ` &mdash; ${escapeHtml(data.error || "Unknown error")}`;
+          showWledFeedback("Connection failed: " + (data.error || "Unknown error"), "error");
+          toast("WLED connection failed.", "error");
+        }
+      } catch (e) {
+        statusEl.innerHTML = '<span style="color:var(--clr-danger)">Error</span>';
+        showWledFeedback("Connection failed: " + e.message, "error");
+        toast("WLED connection failed.", "error");
+      }
+      this.disabled = false;
+    });
+  }
+
+  if ($("#wled-on")) {
+    $("#wled-on").addEventListener("click", async function () {
+      this.disabled = true;
+      try {
+        const res = await api("POST", "/admin/wled/on");
+        const data = await res.json();
+        if (data.ok) {
+          showWledFeedback("LED strip turned on.", "success");
+          toast("WLED on.", "success");
+        } else {
+          showWledFeedback(data.error || "Failed to turn on.", "error");
+        }
+      } catch (e) {
+        showWledFeedback("Failed: " + e.message, "error");
+      }
+      this.disabled = false;
+    });
+  }
+
+  if ($("#wled-off")) {
+    $("#wled-off").addEventListener("click", async function () {
+      this.disabled = true;
+      try {
+        const res = await api("POST", "/admin/wled/off");
+        const data = await res.json();
+        if (data.ok) {
+          showWledFeedback("LED strip turned off.", "success");
+          toast("WLED off.", "success");
+        } else {
+          showWledFeedback(data.error || "Failed to turn off.", "error");
+        }
+      } catch (e) {
+        showWledFeedback("Failed: " + e.message, "error");
+      }
+      this.disabled = false;
+    });
+  }
+
+  if ($("#wled-trigger-preset")) {
+    $("#wled-trigger-preset").addEventListener("click", async function () {
+      const input = $("#wled-preset-input");
+      const presetId = parseInt(input.value, 10);
+      if (!presetId || presetId < 1 || presetId > 250) {
+        showWledFeedback("Enter a preset ID between 1 and 250.", "error");
+        return;
+      }
+      this.disabled = true;
+      try {
+        const res = await api("POST", `/admin/wled/preset/${presetId}`);
+        const data = await res.json();
+        if (data.ok) {
+          showWledFeedback(`Preset ${presetId} triggered.`, "success");
+          toast(`WLED preset ${presetId} triggered.`, "success");
+        } else {
+          showWledFeedback(data.error || `Failed to trigger preset ${presetId}.`, "error");
+        }
+      } catch (e) {
+        showWledFeedback("Failed: " + e.message, "error");
+      }
+      this.disabled = false;
+    });
+  }
+
   // -- Init -------------------------------------------------------------------
   tryAutoLogin();
 })();

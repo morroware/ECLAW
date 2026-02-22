@@ -21,6 +21,7 @@ from app.database import close_db, get_db, prune_old_entries
 from app.game.queue_manager import QueueManager
 from app.game.state_machine import StateMachine
 from app.gpio.controller import GPIOController
+from app.wled import WLEDClient
 from app.ws.control_handler import ControlHandler
 from app.ws.status_hub import StatusHub
 
@@ -196,9 +197,18 @@ async def lifespan(app: FastAPI):
     ws_hub = StatusHub()
     app.state.ws_hub = ws_hub
 
+    # Init optional WLED LED strip controller
+    wled = WLEDClient()
+    await wled.start()
+    app.state.wled_client = wled
+    if settings.wled_enabled and settings.wled_device_ip:
+        logger.info("WLED integration enabled (device=%s)", settings.wled_device_ip)
+    else:
+        logger.info("WLED integration disabled")
+
     # Create state machine and control handler (circular ref resolved via late binding)
     ctrl = ControlHandler(None, qm, gpio, settings)  # sm set below
-    sm = StateMachine(gpio, qm, ws_hub, ctrl, settings)
+    sm = StateMachine(gpio, qm, ws_hub, ctrl, settings, wled=wled)
     ctrl.sm = sm  # wire up the reference
 
     app.state.state_machine = sm
@@ -230,6 +240,7 @@ async def lifespan(app: FastAPI):
 
     if app.state.camera:
         app.state.camera.stop()
+    await wled.close()
     await gpio.cleanup()
     from app.api.routes import close_health_http
     await close_health_http()
