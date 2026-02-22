@@ -116,6 +116,9 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "ready_prompt_seconds":      {"cat": "Timing",       "label": "Ready Prompt (seconds)",     "desc": "Time the player has to press Ready.", "restart": True},
     "queue_grace_period_seconds":{"cat": "Timing",       "label": "Queue Grace Period (seconds)","desc": "Seconds before stale queue entries are cleaned on restart."},
 
+    # -- Win Sensor --
+    "win_sensor_enabled":        {"cat": "Timing",          "label": "Win Sensor Enabled",       "desc": "Enable hardware win sensor. When off, the game skips win/loss detection and just advances the queue after the post-drop wait."},
+
     # -- GPIO Pulse/Hold --
     "coin_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Coin Pulse (ms)",         "desc": "Duration of the coin credit relay pulse."},
     "drop_pulse_ms":             {"cat": "GPIO Pulse/Hold", "label": "Drop Pulse (ms)",         "desc": "Duration of the drop relay pulse."},
@@ -280,6 +283,7 @@ async def admin_dashboard(request: Request):
         "game_state": sm.state.value,
         "paused": sm._paused,
         "gpio_locked": gpio.is_locked,
+        "win_sensor_enabled": settings.win_sensor_enabled,
         "viewer_count": hub.viewer_count,
         "active_player": sm.active_entry_id,
         "current_try": sm.current_try,

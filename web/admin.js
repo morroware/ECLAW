@@ -258,6 +258,8 @@
       // mock_gpio flag: derive from config if loaded, otherwise hide
       const mockField = configFields.find((f) => f.key === "mock_gpio");
       toggleFlag("flag-mock", mockField ? mockField.value === true || mockField.value === "true" : false);
+      // Win sensor off flag
+      toggleFlag("flag-win-sensor-off", data.win_sensor_enabled === false);
 
       // Active player
       if (data.active_player != null) {

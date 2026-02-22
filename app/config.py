@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ready_prompt_seconds: int = 15
     queue_grace_period_seconds: int = 300
 
+    # Win sensor
+    win_sensor_enabled: bool = True
+
     # GPIO pulse/hold
     coin_pulse_ms: int = 150
     drop_pulse_ms: int = 200
