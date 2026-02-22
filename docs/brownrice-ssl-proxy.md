@@ -194,12 +194,18 @@ server {
     }
 
     # -- MediaMTX WebRTC (WHEP signaling) --
+    # Route through FastAPI's built-in stream proxy (stream_proxy.py)
+    # which forwards to MediaMTX on localhost:8889.  We cannot hit
+    # MediaMTX directly because it binds to 127.0.0.1.
     location /stream/ {
-        proxy_pass http://PI_LAN_IP:8889/;
+        proxy_pass http://PI_LAN_IP:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_read_timeout 86400;
     }
 
