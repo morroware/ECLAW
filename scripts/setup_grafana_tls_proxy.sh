@@ -89,7 +89,6 @@ prompt APP_DOMAIN "Domain for the claw app" "claw.thecastlefuncenter.com"
 prompt PI_LAN_IP "Pi's private LAN IP (e.g. 192.168.1.50)"
 [ -n "$PI_LAN_IP" ] || die "Pi LAN IP is required"
 prompt PI_APP_PORT "Pi app port" "8000"
-prompt PI_STREAM_PORT "Pi MediaMTX WebRTC port" "8889"
 prompt_yes_no INSTALL_PKGS "Install/update nginx + certbot" "Y"
 prompt_yes_no RUN_CERTBOT "Request Let's Encrypt certificate after config deploy" "Y"
 
@@ -239,12 +238,18 @@ server {
     }
 
     # -- MediaMTX WebRTC (WHEP signaling) --
+    # Route through FastAPI's built-in stream proxy (stream_proxy.py)
+    # which forwards to MediaMTX on localhost:8889.  We cannot hit
+    # MediaMTX directly because it binds to 127.0.0.1.
     location /stream/ {
-        proxy_pass http://${PI_LAN_IP}:${PI_STREAM_PORT}/;
+        proxy_pass http://${PI_LAN_IP}:${PI_APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_read_timeout 86400;
     }
 
