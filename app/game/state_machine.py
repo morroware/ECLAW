@@ -203,8 +203,12 @@ class StateMachine:
 
         Accepts wins during both DROPPING and POST_DROP.  Some claw machines
         trigger the win sensor while the claw is still retracting (DROPPING).
+        Ignored entirely when win_sensor_enabled is False.
         """
         async with self._sm_lock:
+            if not self.settings.win_sensor_enabled:
+                logger.debug("Win trigger ignored: win sensor disabled")
+                return
             if self.state == TurnState.DROPPING:
                 logger.info("WIN DETECTED during DROPPING — ending turn early")
                 await self._end_turn("win")
@@ -305,7 +309,8 @@ class StateMachine:
             drop_secs = self.settings.drop_hold_max_ms / 1000.0
             self._state_deadline = time.monotonic() + drop_secs
             await self.gpio.all_directions_off()
-            self.gpio.register_win_callback(self._win_bridge)
+            if self.settings.win_sensor_enabled:
+                self.gpio.register_win_callback(self._win_bridge)
             await self.gpio.drop_on()
             self._state_timer = asyncio.create_task(
                 self._drop_hold_timeout(drop_secs)
@@ -313,7 +318,8 @@ class StateMachine:
 
         elif new_state == TurnState.POST_DROP:
             self._state_deadline = time.monotonic() + self.settings.post_drop_wait_seconds
-            self.gpio.register_win_callback(self._win_bridge)
+            if self.settings.win_sensor_enabled:
+                self.gpio.register_win_callback(self._win_bridge)
             self._state_timer = asyncio.create_task(
                 self._post_drop_timeout(self.settings.post_drop_wait_seconds)
             )
@@ -522,12 +528,20 @@ class StateMachine:
             async with self._sm_lock:
                 if self.state == TurnState.POST_DROP:
                     self.gpio.unregister_win_callback()
-                    logger.info("Post-drop timeout, no win")
                     self._state_timer = None  # Prevent self-cancellation
                     if self.current_try < self.settings.tries_per_player:
+                        if self.settings.win_sensor_enabled:
+                            logger.info("Post-drop timeout, no win — starting next try")
+                        else:
+                            logger.info("Win sensor disabled — advancing to next try")
                         await self._start_try()
                     else:
-                        await self._end_turn("loss")
+                        if self.settings.win_sensor_enabled:
+                            logger.info("Post-drop timeout, no win — ending turn as loss")
+                            await self._end_turn("loss")
+                        else:
+                            logger.info("Win sensor disabled — all tries used, ending turn")
+                            await self._end_turn("loss")
         except asyncio.CancelledError:
             pass
         except Exception:
