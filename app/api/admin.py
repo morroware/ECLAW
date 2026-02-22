@@ -98,6 +98,14 @@ _RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
     "max_executor_replacements":    (1, 100),
     "executor_replacement_window_s":(10, 600),
 
+    # WLED presets (0 = disabled, positive = preset ID)
+    "wled_preset_win":              (0, 250),
+    "wled_preset_loss":             (0, 250),
+    "wled_preset_drop":             (0, 250),
+    "wled_preset_start_turn":       (0, 250),
+    "wled_preset_idle":             (0, 250),
+    "wled_preset_expire":           (0, 250),
+
     # Watchdog
     "watchdog_check_interval_s":    (1, 60),
     "watchdog_fail_threshold":      (1, 100),
@@ -211,6 +219,16 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "gpio_op_timeout_s":         {"cat": "GPIO Timeouts","label": "GPIO Op Timeout (s)",        "desc": "Timeout for normal GPIO operations.", "restart": True},
     "gpio_pulse_timeout_s":      {"cat": "GPIO Timeouts","label": "GPIO Pulse Timeout (s)",     "desc": "Timeout for GPIO pulse operations.", "restart": True},
     "gpio_init_timeout_s":       {"cat": "GPIO Timeouts","label": "GPIO Init Timeout (s)",      "desc": "Timeout for GPIO initialization.", "restart": True},
+
+    # -- WLED Integration --
+    "wled_enabled":              {"cat": "WLED",         "label": "WLED Enabled",                "desc": "Enable WLED LED strip integration. Requires a device IP to be set."},
+    "wled_device_ip":            {"cat": "WLED",         "label": "WLED Device IP",              "desc": "IP address (or hostname:port) of the WLED controller (e.g. 192.168.1.50)."},
+    "wled_preset_win":           {"cat": "WLED",         "label": "Win Preset ID",               "desc": "WLED preset to activate on a win. 0 = no action."},
+    "wled_preset_loss":          {"cat": "WLED",         "label": "Loss Preset ID",              "desc": "WLED preset to activate on a loss. 0 = no action."},
+    "wled_preset_drop":          {"cat": "WLED",         "label": "Drop Preset ID",              "desc": "WLED preset to activate when the claw drops. 0 = no action."},
+    "wled_preset_start_turn":    {"cat": "WLED",         "label": "Start Turn Preset ID",        "desc": "WLED preset to activate when a player's turn starts. 0 = no action."},
+    "wled_preset_idle":          {"cat": "WLED",         "label": "Idle Preset ID",              "desc": "WLED preset to activate when the machine returns to idle. 0 = no action."},
+    "wled_preset_expire":        {"cat": "WLED",         "label": "Expire Preset ID",            "desc": "WLED preset to activate when a turn expires. 0 = no action."},
 }
 
 
@@ -606,6 +624,51 @@ async def admin_queue_details(request: Request):
             for e in entries
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# WLED integration endpoints
+# ---------------------------------------------------------------------------
+
+@admin_router.get("/wled/test", dependencies=[Depends(require_admin)])
+async def admin_wled_test(request: Request):
+    """Test connection to the configured WLED device."""
+    wled = getattr(request.app.state, "wled_client", None)
+    if wled is None:
+        return {"ok": False, "error": "WLED client not initialised"}
+    return await wled.test_connection()
+
+
+@admin_router.post("/wled/preset/{preset_id}", dependencies=[Depends(require_admin)])
+async def admin_wled_trigger_preset(preset_id: int, request: Request):
+    """Trigger a specific WLED preset (admin testing)."""
+    if preset_id < 1 or preset_id > 250:
+        raise HTTPException(400, "Preset ID must be between 1 and 250")
+    wled = getattr(request.app.state, "wled_client", None)
+    if wled is None:
+        return {"ok": False, "error": "WLED client not initialised"}
+    success = await wled.trigger_preset(preset_id)
+    return {"ok": success}
+
+
+@admin_router.post("/wled/on", dependencies=[Depends(require_admin)])
+async def admin_wled_on(request: Request):
+    """Turn WLED strip on."""
+    wled = getattr(request.app.state, "wled_client", None)
+    if wled is None:
+        return {"ok": False, "error": "WLED client not initialised"}
+    success = await wled.set_on(True)
+    return {"ok": success}
+
+
+@admin_router.post("/wled/off", dependencies=[Depends(require_admin)])
+async def admin_wled_off(request: Request):
+    """Turn WLED strip off."""
+    wled = getattr(request.app.state, "wled_client", None)
+    if wled is None:
+        return {"ok": False, "error": "WLED client not initialised"}
+    success = await wled.set_on(False)
+    return {"ok": success}
 
 
 @admin_router.get("/contacts/csv", dependencies=[Depends(require_admin)])

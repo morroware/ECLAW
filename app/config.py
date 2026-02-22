@@ -91,6 +91,16 @@ class Settings(BaseSettings):
     # Mock mode: set to true when running without real GPIO hardware
     mock_gpio: bool = False
 
+    # -- WLED LED strip integration (optional) --------------------------------
+    wled_enabled: bool = False
+    wled_device_ip: str = ""
+    wled_preset_win: int = 0
+    wled_preset_loss: int = 0
+    wled_preset_drop: int = 0
+    wled_preset_start_turn: int = 0
+    wled_preset_idle: int = 0
+    wled_preset_expire: int = 0
+
     # DB maintenance: hours to keep completed entries before pruning
     db_retention_hours: int = 48
 

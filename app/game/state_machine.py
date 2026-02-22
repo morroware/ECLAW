@@ -18,12 +18,13 @@ class TurnState(str, Enum):
 
 
 class StateMachine:
-    def __init__(self, gpio_controller, queue_manager, ws_hub, control_handler, settings):
+    def __init__(self, gpio_controller, queue_manager, ws_hub, control_handler, settings, wled=None):
         self.gpio = gpio_controller
         self.queue = queue_manager
         self.ws = ws_hub
         self.ctrl = control_handler
         self.settings = settings
+        self.wled = wled  # Optional WLEDClient — None when WLED is disabled
 
         self.state = TurnState.IDLE
         self.active_entry_id: str | None = None
@@ -315,6 +316,7 @@ class StateMachine:
             self._state_timer = asyncio.create_task(
                 self._drop_hold_timeout(drop_secs)
             )
+            await self._wled_event("drop")
 
         elif new_state == TurnState.POST_DROP:
             self._state_deadline = time.monotonic() + self.settings.post_drop_wait_seconds
@@ -355,6 +357,10 @@ class StateMachine:
             for i in range(self.settings.coin_pulses_per_credit):
                 await self.gpio.pulse("coin")
                 await asyncio.sleep(self.settings.coin_post_pulse_delay_s)  # Let machine register credit
+
+        # Fire WLED start_turn on the first try
+        if self.current_try == 1:
+            await self._wled_event("start_turn")
 
         await self._enter_state(TurnState.MOVING)
 
@@ -438,6 +444,11 @@ class StateMachine:
         except Exception:
             logger.exception("Error during turn-end cleanup (non-fatal)")
 
+        # Fire WLED event based on the turn result
+        wled_event = {"win": "win", "loss": "loss", "expired": "expire"}.get(result)
+        if wled_event:
+            await self._wled_event(wled_event)
+
         # Always reset to IDLE regardless of cleanup errors above
         self.state = TurnState.IDLE
         self._last_state_change = time.monotonic()
@@ -445,6 +456,9 @@ class StateMachine:
         self.current_try = 0
         self._state_deadline = 0.0
         self._turn_deadline = 0.0
+
+        # Notify WLED of idle state
+        await self._wled_event("idle")
 
         # Schedule advance_queue as a separate task to prevent deadlock.
         # _end_turn is often called from timer callbacks that fire while
@@ -621,6 +635,17 @@ class StateMachine:
 
         # Schedule advance outside the lock to avoid deadlock
         self._schedule_advance()
+
+    # -- WLED helper ---------------------------------------------------------
+
+    async def _wled_event(self, event: str):
+        """Fire a WLED event if a client is configured.  Never raises."""
+        if self.wled is None:
+            return
+        try:
+            await self.wled.on_event(event)
+        except Exception:
+            logger.exception("WLED event '%s' failed (non-fatal)", event)
 
     # -- Helpers -------------------------------------------------------------
 
