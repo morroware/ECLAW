@@ -819,6 +819,13 @@
             message.textContent = "Better luck next time!";
             sfx.playLoss();
             triggerScreenFlash("loss");
+          } else if (result === "done") {
+            icon.textContent = "\u{1F3AE}";
+            icon.classList.add("loss-icon");
+            title.textContent = "Turn Over";
+            title.className = "";
+            resultPanel.classList.add("result-loss");
+            message.textContent = "Thanks for playing!";
           } else if (result === "expired") {
             icon.textContent = "\u{231B}";
             icon.classList.add("loss-icon");
