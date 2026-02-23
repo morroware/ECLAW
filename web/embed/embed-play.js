@@ -152,7 +152,7 @@
       }
 
       if (msg.type === "state_update") {
-        gameStateDisplay.textContent = formatState(msg.state);
+        gameStateDisplay.textContent = formatState(msg.state, msg);
       }
 
       if (msg.type === "turn_end") {
@@ -419,9 +419,10 @@
       updateTimerBar(0);
       sfx.playDropping();
     } else if (state === "post_drop") {
-      timerDisplay.textContent = "Checking...";
+      var pdLabel = msg.win_sensor_enabled === false ? "Finishing..." : "Checking...";
+      timerDisplay.textContent = pdLabel;
       timerDisplay.style.color = "#60a5fa";
-      $("#ctrl-timer").textContent = "Checking...";
+      $("#ctrl-timer").textContent = pdLabel;
       $("#ctrl-timer").style.color = "#60a5fa";
       clearInterval(moveTimerInterval);
       setControlsEnabled(false);
@@ -684,13 +685,15 @@
 
   // -- Helpers -------------------------------------------------------------
 
-  function formatState(state) {
+  function formatState(state, msg) {
+    if (state === "post_drop") {
+      return (msg && msg.win_sensor_enabled === false) ? "Finishing..." : "Checking...";
+    }
     var map = {
       idle: "Waiting for Player",
       ready_prompt: "Player Ready?",
       moving: "PLAYING",
       dropping: "DROPPING!",
-      post_drop: "Checking...",
       turn_end: "Turn Over"
     };
     return map[state] || state;
