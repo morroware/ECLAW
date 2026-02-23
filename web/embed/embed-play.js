@@ -28,6 +28,7 @@
   var token = null;
   var playerName = null;
   var playerState = null;
+  var lastWinSensorEnabled = true;
   var controlSocket = null;
   var statusWs = null;
   var moveTimerInterval = null;
@@ -399,6 +400,10 @@
   // -- State Updates from Server -------------------------------------------
 
   function handleStateUpdate(msg) {
+    if (typeof msg.win_sensor_enabled === "boolean") {
+      lastWinSensorEnabled = msg.win_sensor_enabled;
+    }
+
     var state = msg.state;
 
     if (state === "moving") {
@@ -625,6 +630,13 @@
             sfx.playWin();
             vibrate([100, 50, 100, 50, 200]);
             triggerScreenFlash("win");
+          } else if (result === "loss" && lastWinSensorEnabled === false) {
+            icon.textContent = "\u{1F3AE}";
+            icon.classList.add("loss-icon");
+            title.textContent = "Turn Over";
+            title.className = "";
+            resultPanel.classList.add("result-loss");
+            message.textContent = "Thanks for playing!";
           } else if (result === "loss") {
             icon.textContent = "\u{1F61E}";
             icon.classList.add("loss-icon");
