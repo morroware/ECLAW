@@ -319,11 +319,15 @@ class StateMachine:
             await self._wled_event("drop")
 
         elif new_state == TurnState.POST_DROP:
-            self._state_deadline = time.monotonic() + self.settings.post_drop_wait_seconds
+            # When the win sensor is off there is nothing to wait for —
+            # use a short 1-second pause so the UI transition is visible,
+            # then advance immediately.
+            wait = self.settings.post_drop_wait_seconds if self.settings.win_sensor_enabled else 1
+            self._state_deadline = time.monotonic() + wait
             if self.settings.win_sensor_enabled:
                 self.gpio.register_win_callback(self._win_bridge)
             self._state_timer = asyncio.create_task(
-                self._post_drop_timeout(self.settings.post_drop_wait_seconds)
+                self._post_drop_timeout(wait)
             )
 
         elif new_state == TurnState.TURN_END:
@@ -676,6 +680,7 @@ class StateMachine:
             "try_move_seconds": self.settings.try_move_seconds,
             "state_seconds_left": round(remaining, 1),
             "turn_seconds_left": round(turn_remaining, 1),
+            "win_sensor_enabled": self.settings.win_sensor_enabled,
         }
 
     async def _write_deadlines(self):
