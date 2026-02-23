@@ -559,8 +559,8 @@ class StateMachine:
                             logger.info("Post-drop timeout, no win — ending turn as loss")
                             await self._end_turn("loss")
                         else:
-                            logger.info("Win sensor disabled — all tries used, ending turn")
-                            await self._end_turn("done")
+                            logger.info("Win sensor disabled — all tries used, ending turn as loss")
+                            await self._end_turn("loss")
         except asyncio.CancelledError:
             pass
         except Exception:
