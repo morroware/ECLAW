@@ -11,6 +11,7 @@
   let token = null;
   let playerName = null; // Name used when joining — for matching in queue updates
   let playerState = null; // null, 'waiting', 'ready', 'active', 'done'
+  let lastWinSensorEnabled = true;
   let controlSocket = null;
   let statusWs = null;
   let moveTimerInterval = null;
@@ -556,6 +557,10 @@
   // -- State Updates from Server --------------------------------------------
 
   function handleStateUpdate(msg) {
+    if (typeof msg.win_sensor_enabled === "boolean") {
+      lastWinSensorEnabled = msg.win_sensor_enabled;
+    }
+
     const state = msg.state;
 
     if (state === "moving") {
@@ -810,6 +815,13 @@
             spawnConfetti();
             // Second burst of confetti after a short delay
             setTimeout(() => spawnConfetti(), 800);
+          } else if (result === "loss" && lastWinSensorEnabled === false) {
+            icon.textContent = "\u{1F3AE}";
+            icon.classList.add("loss-icon");
+            title.textContent = "Turn Over";
+            title.className = "";
+            resultPanel.classList.add("result-loss");
+            message.textContent = "Thanks for playing!";
           } else if (result === "loss") {
             icon.textContent = "\u{1F61E}";
             icon.classList.add("loss-icon");
