@@ -1573,6 +1573,27 @@ button:hover .btn-shine {
   #hud-top-right {
     gap: 3px;
   }
+
+  /* Use the lower letterbox area as a utility zone instead of dead space */
+  .overlay-panel {
+    top: 70%;
+    width: min(92%, 420px);
+  }
+
+  #controls-panel {
+    min-height: 150px;
+    padding-top: 12px;
+    background: linear-gradient(to top, rgba(8,8,14,0.95) 0%, rgba(8,8,14,0.82) 45%, rgba(8,8,14,0.22) 80%, transparent 100%);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  #current-player-hud {
+    bottom: calc(58px + var(--safe-bottom));
+  }
+
+  #stream-reconnect {
+    bottom: calc(72px + var(--safe-bottom));
+  }
 }
 
 /* Wider desktop — slightly larger D-pad, glass overlays, full-height video */
