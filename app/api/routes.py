@@ -92,6 +92,21 @@ class HealthResponse(BaseModel):
     uptime_seconds: float
 
 
+class UiTextResponse(BaseModel):
+    queue_title: str
+    queue_subtitle: str
+    ready_title: str
+    ready_subtitle: str
+    result_win_title: str
+    result_win_message: str
+    result_loss_title: str
+    result_loss_message: str
+    result_turn_over_title: str
+    result_turn_over_message: str
+    result_expired_title: str
+    result_expired_message: str
+
+
 # -- Rate Limiting -----------------------------------------------------------
 #
 # Primary rate limiter uses SQLite (durable across restarts, consistent
@@ -211,6 +226,25 @@ def _track_background_task(request: Request, task: asyncio.Task):
     tasks = request.app.state.background_tasks
     tasks.add(task)
     task.add_done_callback(tasks.discard)
+
+
+@router.get("/ui-text", response_model=UiTextResponse)
+async def ui_text():
+    """Return player-facing copy used by queue/ready/result cards."""
+    return UiTextResponse(
+        queue_title=settings.ui_queue_title,
+        queue_subtitle=settings.ui_queue_subtitle,
+        ready_title=settings.ui_ready_title,
+        ready_subtitle=settings.ui_ready_subtitle,
+        result_win_title=settings.ui_result_win_title,
+        result_win_message=settings.ui_result_win_message,
+        result_loss_title=settings.ui_result_loss_title,
+        result_loss_message=settings.ui_result_loss_message,
+        result_turn_over_title=settings.ui_result_turn_over_title,
+        result_turn_over_message=settings.ui_result_turn_over_message,
+        result_expired_title=settings.ui_result_expired_title,
+        result_expired_message=settings.ui_result_expired_message,
+    )
 
 
 async def _advance_queue_safe(request: Request):
