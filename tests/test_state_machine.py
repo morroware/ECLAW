@@ -67,6 +67,9 @@ class _DummySettings:
     win_sensor_enabled = True
     emergency_stop_timeout_s = 1.0
     turn_time_seconds = 90
+    try_move_seconds = 30
+    post_drop_wait_seconds = 8
+    post_drop_wait_no_sensor_seconds = 3
 
 
 @pytest.mark.anyio
@@ -85,6 +88,24 @@ async def test_win_bridge_uses_running_loop():
 
     await asyncio.wait_for(handled.wait(), timeout=1)
 
+
+
+
+@pytest.mark.anyio
+async def test_post_drop_without_sensor_uses_configured_wait():
+    settings = _DummySettings()
+    settings.win_sensor_enabled = False
+    settings.post_drop_wait_no_sensor_seconds = 4
+
+    sm = StateMachine(_DummyGPIO(), _DummyQueue(), _DummyWS(), _DummyCtrl(), settings)
+    sm.active_entry_id = "entry-1"
+    sm.current_try = 1
+
+    start = asyncio.get_running_loop().time()
+    await sm._enter_state(TurnState.POST_DROP)
+
+    remaining = sm._state_deadline - start
+    assert remaining == pytest.approx(4, abs=0.2)
 
 @pytest.mark.anyio
 async def test_post_drop_without_sensor_ends_as_loss():
