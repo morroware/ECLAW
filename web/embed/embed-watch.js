@@ -31,7 +31,6 @@
   var $ = function (sel) { return document.querySelector(sel); };
   var connectionDot = $("#connection-status");
   var viewerCount = $("#viewer-count");
-  var queueLength = $("#queue-length");
   var gameStateDisplay = $("#game-state-display");
   var timerDisplay = $("#timer-display");
   var tryDisplay = $("#try-display");
@@ -159,8 +158,6 @@
       catch (e) { return; }
 
       if (msg.type === "queue_update") {
-        queueLength.textContent = "Queue: " + msg.queue_length;
-
         // Current player HUD
         if (msg.current_player) {
           playerHudName.textContent = msg.current_player;

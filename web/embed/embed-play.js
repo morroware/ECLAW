@@ -71,8 +71,6 @@
   var joinForm = $("#join-form");
   var joinError = $("#join-error");
   var joinBtn = $("#join-btn");
-  var queueLength = $("#queue-length");
-  var currentPlayerDisplay = $("#current-player-display");
   var gameStateDisplay = $("#game-state-display");
   var timerDisplay = $("#timer-display");
   var timerBar = $("#timer-bar");
@@ -126,29 +124,12 @@
       catch (e) { return; }
 
       if (msg.type === "queue_update") {
-        queueLength.textContent = "Queue: " + msg.queue_length;
-        currentPlayerDisplay.textContent = msg.current_player
-          ? "Playing: " + msg.current_player : "";
-
         updateCurrentPlayerHud(msg.current_player);
 
         if (msg.viewer_count != null) {
           notifyParent("queue_update", {
-            queue_length: msg.queue_length,
             viewer_count: msg.viewer_count
           });
-        }
-
-        // Update waiting panel position
-        if (msg.entries && playerState === "waiting" && playerName) {
-          var waitingIndex = 0;
-          for (var i = 0; i < msg.entries.length; i++) {
-            if (msg.entries[i].state === "waiting") waitingIndex++;
-            if (msg.entries[i].name === playerName && msg.entries[i].state === "waiting") {
-              $("#wait-position").textContent = waitingIndex;
-              break;
-            }
-          }
         }
       }
 
@@ -270,10 +251,7 @@
       sfx.playJoinQueue();
       notifyParent("joined", { position: data.position });
 
-      switchToState("waiting", {
-        position: data.position,
-        estimated_wait_seconds: data.estimated_wait_seconds
-      });
+      switchToState("waiting", {});
     }).catch(function (e) {
       if (e.message !== "join_failed") {
         joinError.textContent = "Network error. Please try again.";
@@ -574,13 +552,6 @@
 
       case "waiting":
         waitingPanel.classList.remove("hidden");
-        if (data) {
-          $("#wait-position").textContent = data.position || "--";
-          if (data.estimated_wait_seconds) {
-            var mins = Math.ceil(data.estimated_wait_seconds / 60);
-            $("#wait-time").textContent = "~" + mins + " min";
-          }
-        }
         if (!controlSocket) connectControlWs();
         break;
 
