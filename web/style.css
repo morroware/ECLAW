@@ -1574,10 +1574,12 @@ button:hover .btn-shine {
     gap: 3px;
   }
 
-  /* Use the lower letterbox area as a utility zone instead of dead space */
+  /* Keep join/ready cards fully reachable on mobile while still polished */
   .overlay-panel {
-    top: 70%;
+    top: 54%;
     width: min(92%, 420px);
+    max-height: min(68dvh, 520px);
+    overflow-y: auto;
   }
 
   #controls-panel {
@@ -1593,6 +1595,13 @@ button:hover .btn-shine {
 
   #stream-reconnect {
     bottom: calc(72px + var(--safe-bottom));
+  }
+}
+
+@media (max-width: 767px) and (max-height: 760px) {
+  .overlay-panel {
+    top: 50%;
+    max-height: min(74dvh, 500px);
   }
 }
 
