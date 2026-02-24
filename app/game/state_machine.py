@@ -319,10 +319,13 @@ class StateMachine:
             await self._wled_event("drop")
 
         elif new_state == TurnState.POST_DROP:
-            # When the win sensor is off there is nothing to wait for —
-            # use a short 1-second pause so the UI transition is visible,
-            # then advance immediately.
-            wait = self.settings.post_drop_wait_seconds if self.settings.win_sensor_enabled else 1
+            # Keep a configurable pause even when the win sensor is disabled
+            # so the physical claw has time to settle after release.
+            wait = (
+                self.settings.post_drop_wait_seconds
+                if self.settings.win_sensor_enabled
+                else self.settings.post_drop_wait_no_sensor_seconds
+            )
             self._state_deadline = time.monotonic() + wait
             if self.settings.win_sensor_enabled:
                 self.gpio.register_win_callback(self._win_bridge)

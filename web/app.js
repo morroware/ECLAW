@@ -45,12 +45,8 @@
   const connectionDot = $("#connection-status");
   const viewerCount = $("#viewer-count");
   const latencyDisplay = $("#latency-display");
-  const queueLength = $("#queue-length");
-  const currentPlayerDisplay = $("#current-player-display");
   const gameStateDisplay = $("#game-state-display");
   const timerDisplay = $("#timer-display");
-  const queueList = $("#queue-list");
-  const historyList = $("#history-list");
   const soundToggle = $("#sound-toggle");
   const timerBar = $("#timer-bar");
   const streamContainer = $("#stream-container");
@@ -105,9 +101,6 @@
   // Connect video stream
   initStream();
 
-  // Initial data fetches
-  fetchQueueList();
-  fetchHistory();
 
   // -- Page Lifecycle (bfcache support) -------------------------------------
   // When navigating away, tear down the WHEP session cleanly so MediaMTX
@@ -146,33 +139,12 @@
       catch (e) { console.warn("Bad status WS message:", e); return; }
 
       if (msg.type === "queue_update") {
-        queueLength.textContent = `Queue: ${msg.queue_length}`;
-        currentPlayerDisplay.textContent = msg.current_player
-          ? `Playing: ${msg.current_player}`
-          : "";
-
-        // Update the current player HUD on video
+        // Keep spectators focused on gameplay while still showing
+        // the active player in the video HUD.
         updateCurrentPlayerHud(msg.current_player);
 
         if (msg.viewer_count != null) {
           viewerCount.textContent = `${msg.viewer_count} viewer${msg.viewer_count !== 1 ? "s" : ""}`;
-        }
-        // Real-time queue list update from WebSocket
-        if (msg.entries) {
-          renderQueueList(msg.entries);
-
-          // Update the waiting panel's position if the player is in the queue.
-          // The entries are ordered: active/ready first, then waiting by position.
-          if (playerState === "waiting" && playerName) {
-            let waitingIndex = 0;
-            for (const entry of msg.entries) {
-              if (entry.state === "waiting") waitingIndex++;
-              if (entry.name === playerName && entry.state === "waiting") {
-                $("#wait-position").textContent = waitingIndex;
-                break;
-              }
-            }
-          }
         }
       }
 
@@ -186,8 +158,6 @@
         setTimeout(() => {
           gameStateDisplay.textContent = "";
         }, 3000);
-        // Refresh history after a turn ends
-        fetchHistory();
       }
     };
 
@@ -271,93 +241,6 @@
     } catch (e) {
       console.error("Session check failed:", e);
     }
-  }
-
-  // -- Queue List -----------------------------------------------------------
-
-  async function fetchQueueList() {
-    try {
-      const res = await fetch("/api/queue");
-      if (res.ok) {
-        const data = await res.json();
-        renderQueueList(data.entries);
-        queueLength.textContent = `Queue: ${data.total}`;
-        if (data.current_player) {
-          currentPlayerDisplay.textContent = `Playing: ${data.current_player}`;
-          updateCurrentPlayerHud(data.current_player);
-        }
-      }
-    } catch (e) {
-      // Ignore — server may not be ready
-    }
-  }
-
-  function renderQueueList(entries) {
-    if (!entries || entries.length === 0) {
-      queueList.innerHTML = '<li class="queue-empty">No one in the queue</li>';
-      return;
-    }
-
-    let waitingPos = 0;
-    queueList.innerHTML = entries
-      .map((entry) => {
-        let stateLabel = "";
-        let stateClass = "";
-        if (entry.state === "active") {
-          stateLabel = "PLAYING";
-          stateClass = "state-active";
-        } else if (entry.state === "ready") {
-          stateLabel = "READY";
-          stateClass = "state-ready";
-        } else {
-          waitingPos++;
-          stateLabel = `#${waitingPos}`;
-          stateClass = "state-waiting";
-        }
-
-        return `<li class="queue-entry ${stateClass}">
-          <span class="queue-name">${escapeHtml(entry.name)}</span>
-          <span class="queue-state">${stateLabel}</span>
-        </li>`;
-      })
-      .join("");
-  }
-
-  // -- Game History ---------------------------------------------------------
-
-  async function fetchHistory() {
-    try {
-      const res = await fetch("/api/history");
-      if (res.ok) {
-        const data = await res.json();
-        renderHistory(data.entries);
-      }
-    } catch (e) {
-      // Ignore
-    }
-  }
-
-  function renderHistory(entries) {
-    if (!entries || entries.length === 0) {
-      historyList.innerHTML = '<p class="text-dim">No games yet</p>';
-      return;
-    }
-
-    historyList.innerHTML = entries
-      .map((entry) => {
-        const isWin = entry.result === "win";
-        const resultLabel = isWin ? "WIN" : escapeHtml((entry.result || "").toUpperCase());
-        const resultClass = isWin ? "result-win" : "result-loss";
-        const tries = entry.tries_used != null ? `${entry.tries_used} tries` : "";
-        const timeAgo = entry.completed_at ? formatTimeAgo(entry.completed_at) : "";
-
-        return `<div class="history-entry">
-          <span class="history-result ${resultClass}">${resultLabel}</span>
-          <span class="history-name">${escapeHtml(entry.name)}</span>
-          <span class="history-meta">${tries}${timeAgo ? " \u00B7 " + timeAgo : ""}</span>
-        </div>`;
-      })
-      .join("");
   }
 
   // -- Join Queue -----------------------------------------------------------
@@ -751,13 +634,6 @@
 
       case "waiting":
         waitingPanel.classList.remove("hidden");
-        if (data) {
-          $("#wait-position").textContent = data.position || "--";
-          if (data.estimated_wait_seconds) {
-            const mins = Math.ceil(data.estimated_wait_seconds / 60);
-            $("#wait-time").textContent = `~${mins} min`;
-          }
-        }
         if (!controlSocket) connectControlWs();
         break;
 
@@ -938,19 +814,6 @@
     return map[state] || state;
   }
 
-  function formatTimeAgo(isoStr) {
-    if (!isoStr) return "";
-    const now = Date.now();
-    const then = new Date(isoStr + (isoStr.endsWith("Z") ? "" : "Z")).getTime();
-    const diffS = Math.floor((now - then) / 1000);
-
-    if (diffS < 0) return "just now";
-    if (diffS < 60) return "just now";
-    if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
-    if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
-    return `${Math.floor(diffS / 86400)}d ago`;
-  }
-
   function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
@@ -989,17 +852,4 @@
     }
   }, 2000);
 
-  // -- Periodic History Refresh ---------------------------------------------
-  // Queue updates are handled in real-time by the status WebSocket.
-  // Only history needs a periodic fallback since it's not pushed on every change.
-  // Pause polling when tab is hidden to reduce unnecessary requests.
-  let _historyInterval = setInterval(fetchHistory, 30000);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      clearInterval(_historyInterval);
-    } else {
-      fetchHistory();
-      _historyInterval = setInterval(fetchHistory, 30000);
-    }
-  });
 })();
