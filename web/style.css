@@ -1555,19 +1555,43 @@ button:hover .btn-shine {
 /* Mobile screens — show full video while keeping layout polished */
 @media (max-width: 767px) {
   #stream-container {
-    background: linear-gradient(180deg, #06060b 0%, #0b0b13 55%, #131027 100%);
+    /* Atmospheric gradient + radial glows fill the letterbox zones so empty
+       areas feel like part of the arcade ambience, not just dead pixels. */
+    background:
+      radial-gradient(ellipse at 50% 12%, rgba(139, 92, 246, 0.07) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 92%, rgba(34, 211, 238, 0.05) 0%, transparent 50%),
+      linear-gradient(180deg, #08080f 0%, #0a0a14 40%, #110e24 100%);
+  }
+
+  /* Soft edge vignette — adds depth at the video boundaries so the
+     transition from video to letterbox area feels intentional. */
+  #stream-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      /* top edge fade */
+      linear-gradient(to bottom, rgba(8, 8, 15, 0.35) 0%, transparent 8%),
+      /* bottom edge fade — heavier to blend into controls gradient */
+      linear-gradient(to top, rgba(8, 8, 15, 0.5) 0%, transparent 12%);
   }
 
   #stream-video {
-    /* Keep full frame visible on phones and anchor it directly under the HUD. */
+    /* Distribute letterbox space: ~30% above, ~70% below the video.
+       This avoids piling all the empty space at the bottom while keeping
+       the video in the upper portion of the screen. */
     object-fit: contain !important;
-    object-position: center top;
+    object-position: center 30%;
     transform: none;
   }
 
   #hud-top {
     padding-top: 6px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.28) 55%, transparent 100%);
+    /* Extend the scrim a little further since there's now breathing room
+       between the HUD and the top edge of the video frame. */
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.32) 50%, transparent 100%);
   }
 
   #hud-top-right {
@@ -1584,9 +1608,10 @@ button:hover .btn-shine {
 
   #controls-panel {
     min-height: 150px;
-    padding-top: 12px;
-    background: linear-gradient(to top, rgba(8,8,14,0.95) 0%, rgba(8,8,14,0.82) 45%, rgba(8,8,14,0.22) 80%, transparent 100%);
-    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 14px;
+    /* Extended gradient blends smoothly into the lower letterbox zone;
+       the stream-container ::after vignette handles the upper transition. */
+    background: linear-gradient(to top, rgba(8,8,14,0.95) 0%, rgba(8,8,14,0.85) 40%, rgba(8,8,14,0.35) 75%, transparent 100%);
   }
 
   #current-player-hud {
