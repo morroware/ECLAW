@@ -7,6 +7,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -285,7 +286,8 @@ class EmbedHeadersMiddleware(BaseHTTPMiddleware):
             )
             response.headers["Content-Security-Policy"] = csp
             # Remove X-Frame-Options if present — CSP frame-ancestors takes over
-            response.headers.pop("X-Frame-Options", None)
+            if "X-Frame-Options" in response.headers:
+                del response.headers["X-Frame-Options"]
         else:
             response.headers["X-Frame-Options"] = "DENY"
         return response
@@ -306,6 +308,23 @@ app.include_router(api_router)
 app.include_router(admin_router)
 app.include_router(stream_router)
 app.include_router(stream_proxy_router)
+
+
+@app.get("/embed/watch", include_in_schema=False)
+async def embed_watch_page():
+    """Serve the watch embed page without requiring nginx rewrite rules.
+
+    Some hosting stacks proxy requests directly to FastAPI (or override nginx
+    `try_files`) and won't resolve `/embed/watch` -> `/embed/watch.html`.
+    Exposing explicit routes avoids opaque 5xx errors in iframe hosts.
+    """
+    return FileResponse(os.path.join(static_dir, "embed", "watch.html"))
+
+
+@app.get("/embed/play", include_in_schema=False)
+async def embed_play_page():
+    """Serve the interactive embed page without requiring nginx rewrites."""
+    return FileResponse(os.path.join(static_dir, "embed", "play.html"))
 
 
 # WebSocket routes
