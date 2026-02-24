@@ -14,21 +14,21 @@ It provides:
 
 ```mermaid
 flowchart LR
-    Browser[Player / Viewer Browser] -->|HTTPS + WSS| Nginx[nginx]
-    Nginx --> FastAPI[FastAPI app]
-    Nginx --> MediaMTX[MediaMTX]
+    Browser["Player and viewer browsers"] -->|"HTTPS and WSS"| Nginx["nginx"]
+    Nginx --> FastAPI["FastAPI app"]
+    Nginx --> MediaMTX["MediaMTX"]
 
-    FastAPI --> SQLite[(SQLite)]
-    FastAPI --> GPIO[GPIO Controller]
-    FastAPI --> WS1[/ws/status]
-    FastAPI --> WS2[/ws/control]
-    FastAPI --> Camera[MJPEG camera service]
+    FastAPI --> SQLite[("SQLite")]
+    FastAPI --> GPIO["GPIO Controller"]
+    FastAPI --> WSStatus["WebSocket: /ws/status"]
+    FastAPI --> WSControl["WebSocket: /ws/control"]
+    FastAPI --> Camera["MJPEG camera service"]
 
-    GPIO --> Machine[Claw machine relays + win sensor]
-    MediaMTX --> Cam[Pi Camera or USB camera]
+    GPIO --> Machine["Claw relays and win sensor"]
+    MediaMTX --> Cam["Pi Camera or USB camera"]
     Camera --> Cam
 
-    Watchdog[watchdog/main.py] -->|health checks + emergency lockout| GPIO
+    Watchdog["watchdog/main.py"] -->|"health checks and emergency lockout"| GPIO
 ```
 
 ## Repository Layout

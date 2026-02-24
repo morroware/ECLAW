@@ -6,26 +6,26 @@ This document describes the current queue lifecycle, state machine transitions, 
 
 ```mermaid
 flowchart TB
-    UI[Web UI / Embed UI] --> API[FastAPI]
-    UI --> WSStatus[/ws/status]
-    UI --> WSControl[/ws/control]
+    UI["Web UI and embed UI"] --> API["FastAPI"]
+    UI --> WSStatus["WebSocket /ws/status"]
+    UI --> WSControl["WebSocket /ws/control"]
 
-    API --> QM[QueueManager]
-    API --> SM[StateMachine]
+    API --> QM["QueueManager"]
+    API --> SM["StateMachine"]
     WSControl --> SM
-    WSControl --> GPIO[GPIOController]
+    WSControl --> GPIO["GPIOController"]
     SM --> GPIO
-    SM --> Hub[StatusHub]
+    SM --> Hub["StatusHub"]
     SM --> QM
 
-    QM --> DB[(SQLite)]
+    QM --> DB[("SQLite")]
     API --> DB
 
-    API --> StreamProxy[/stream/* proxy]
-    StreamProxy --> MTX[MediaMTX]
-    API --> MJPEG[/api/stream/mjpeg]
+    API --> StreamProxy["/stream/* proxy"]
+    StreamProxy --> MTX["MediaMTX"]
+    API --> MJPEG["/api/stream/mjpeg"]
 
-    GPIO --> Hardware[Relays + win sensor]
+    GPIO --> Hardware["Relays and win sensor"]
 ```
 
 ## 2. Source of Truth
@@ -89,7 +89,7 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant W as /ws/control
+    participant W as WS Control Channel
     participant S as StateMachine
     participant G as GPIO
 
