@@ -1,419 +1,152 @@
-# Remote Claw — Remote Claw Machine Controller
+# Remote Claw
 
-A full-stack platform for controlling a physical claw machine remotely over the web. Players join a queue, watch a live camera stream via WebRTC, control the claw in real-time with keyboard or touch controls, and see their results instantly.
+Remote Claw is a FastAPI + WebSocket control server for a physical claw machine.
 
-Built for **Raspberry Pi 5** with real GPIO control, but runs anywhere with mock GPIO for development and testing. Designed and tested for **50+ concurrent internet users**.
+It provides:
+- Queue-based turn management.
+- Real-time control over GPIO relays.
+- Browser clients for players and spectators.
+- WebRTC streaming via MediaMTX with MJPEG fallback.
+- Admin APIs and admin panel for operations.
+- Safety mechanisms (watchdog, forced relay shutdown, state recovery).
 
----
+## Current Architecture
 
-## Quick Start
+```mermaid
+flowchart LR
+    Browser[Player / Viewer Browser] -->|HTTPS + WSS| Nginx[nginx]
+    Nginx --> FastAPI[FastAPI app]
+    Nginx --> MediaMTX[MediaMTX]
 
-### Try it locally (any machine)
+    FastAPI --> SQLite[(SQLite)]
+    FastAPI --> GPIO[GPIO Controller]
+    FastAPI --> WS1[/ws/status]
+    FastAPI --> WS2[/ws/control]
+    FastAPI --> Camera[MJPEG camera service]
+
+    GPIO --> Machine[Claw machine relays + win sensor]
+    MediaMTX --> Cam[Pi Camera or USB camera]
+    Camera --> Cam
+
+    Watchdog[watchdog/main.py] -->|health checks + emergency lockout| GPIO
+```
+
+## Repository Layout
+
+```text
+app/
+  api/                 Public/admin REST APIs + stream proxy
+  game/                Queue manager and state machine
+  gpio/                Real and mock GPIO abstraction
+  ws/                  Status and control WebSocket handlers
+  main.py              App bootstrap + startup/shutdown lifecycle
+web/                   Player UI, embed UI, admin UI
+watchdog/              Independent hardware safety process
+deploy/                systemd, nginx, MediaMTX configs
+migrations/            SQLite schema migrations
+docs/                  Operational and integration documentation
+tests/                 Pytest coverage for API, state machine, reliability
+```
+
+## Runtime Model
+
+- Single-process uvicorn worker is required.
+- State machine is authoritative for live turn state and timers.
+- SQLite is authoritative for queue entries, game history, contacts, and rate limits.
+- WebSocket channels:
+  - `/ws/status`: broadcast stream for all connected viewers.
+  - `/ws/control`: authenticated per-player control channel.
+
+## Core Game Flow
+
+```mermaid
+stateDiagram-v2
+    [*] --> waiting: POST /api/queue/join
+    waiting --> ready_prompt: advance_queue()
+    ready_prompt --> moving: ready_confirm
+    ready_prompt --> done: ready timeout
+    moving --> dropping: drop_start or move timeout
+    dropping --> post_drop: drop release or safety timeout
+    post_drop --> moving: tries left and no win
+    post_drop --> done: win/loss/expired/admin skip
+    done --> waiting: next player promoted
+```
+
+## Primary Endpoints
+
+### Public API
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/queue/join` | Join queue and receive bearer token |
+| DELETE | `/api/queue/leave` | Leave queue (works for waiting, ready, or active player) |
+| GET | `/api/queue/status` | Current player + queue length |
+| GET | `/api/queue` | Queue list snapshot |
+| GET | `/api/session/me` | Session state for bearer token |
+| GET | `/api/history` | Recent game outcomes |
+| GET | `/api/health` | Service health / runtime status |
+| GET | `/api/stream/snapshot` | JPEG snapshot from built-in camera |
+| GET | `/api/stream/mjpeg` | MJPEG fallback stream |
+
+### Admin API (`X-Admin-Key`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/admin/advance` | End current turn |
+| POST | `/admin/emergency-stop` | Hard lock GPIO outputs |
+| POST | `/admin/unlock` | Unlock GPIO after emergency stop |
+| POST | `/admin/pause` | Pause queue advancement |
+| POST | `/admin/resume` | Resume queue advancement |
+| GET | `/admin/dashboard` | Operational summary + queue/results |
+| GET/PUT | `/admin/config` | View/update runtime configuration |
+| POST | `/admin/kick/{entry_id}` | Remove queue entry |
+| GET | `/admin/queue-details` | Queue entries including IDs |
+| GET | `/admin/contacts/csv` | Export contact list |
+| GET | `/admin/wled/test` | Validate WLED connectivity |
+| POST | `/admin/wled/preset/{preset_id}` | Trigger WLED preset |
+| POST | `/admin/wled/on` | Turn WLED on |
+| POST | `/admin/wled/off` | Turn WLED off |
+
+## Local Development
 
 ```bash
-git clone https://github.com/morroware/remote-claw.git remote-claw && cd remote-claw
 ./install.sh dev
 make run
-# Open http://localhost:8000
 ```
 
-### Deploy on Pi 5 for a PoC demo
+Open `http://localhost:8000`.
+
+Useful commands:
 
 ```bash
-git clone https://github.com/morroware/remote-claw.git remote-claw && cd remote-claw
-./install.sh demo
-# Open http://<pi-ip> from any device on the network
+make test
+make test-quick
+make simulate
+make status
 ```
 
-### Deploy on Pi 5 for production
+## Raspberry Pi Deployment
 
 ```bash
 ./install.sh pi
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for detailed step-by-step instructions including wiring guide, camera setup, internet deployment, and troubleshooting.
-
----
-
-## How It Works
-
-```
-Player's Phone/Laptop
-        |
-    HTTPS + WSS
-        |
-   nginx (port 443)
-   rate limiting + TLS
-   connection limiting
-    /           \
-FastAPI        MediaMTX
-(game server)  (camera stream)
-    |               |
- SQLite  GPIO    Pi Camera
- (queue) (lgpio)
-    |       |
-  Queue   Relays --> Physical Claw Machine
-```
-
-1. **Player joins** via the web UI — enters name/email, gets a queue position
-2. **Queue advances** — when it's your turn, you get a ready prompt (all viewers see real-time queue updates)
-3. **Confirm ready** — the claw machine credits a coin (via GPIO pulse)
-4. **Move the claw** — WASD/arrows on desktop, touch D-pad on mobile (timers synced via SSOT deadlines)
-5. **Drop** — space bar or DROP button fires the drop mechanism
-6. **Win detection** — GPIO input pin checks if a prize was grabbed
-7. **Results** — win/loss displayed, next player is automatically advanced
-8. **Leave anytime** — players can leave the queue at any point, including while actively playing
-
----
-
-## Project Structure
-
-```
-app/                    FastAPI backend (API, game logic, GPIO, camera, WebSocket)
-  api/                  REST endpoints (public + admin + stream)
-  game/                 Queue manager + state machine
-  gpio/                 GPIO controller (gpiozero wrapper)
-  ws/                   WebSocket hubs (status broadcast + player control)
-  camera.py             Built-in camera capture with device + RTSP fallback (MJPEG)
-web/                    Browser UI (vanilla JS, no build step)
-  embed/                Embeddable iframe pages (watch + interactive play)
-wordpress/              WordPress shortcode plugin for embedding
-watchdog/               Independent GPIO safety monitor
-migrations/             SQLite schema
-deploy/                 nginx, systemd, MediaMTX configs
-scripts/                Dev tools, health check, GPIO test, player simulator
-tests/                  pytest test suite
-docs/                   Architecture diagrams & protocol reference
-install.sh              One-command setup (dev / pi / demo / test)
-Makefile                Common commands
-QUICKSTART.md           Detailed setup, wiring, and deployment guide
-```
-
----
-
-## Make Commands
+For short demo timings:
 
 ```bash
-make help             # Show all commands
-make install          # Dev environment setup
-make install-prod     # Pi 5 production setup
-make run              # Dev server (mock GPIO, auto-reload)
-make run-prod         # Production server (localhost bind, 1 worker)
-make demo             # Demo mode (short timers, mock GPIO)
-make demo-pi          # Demo on Pi 5 (short timers, real GPIO)
-make test             # Run test suite
-make simulate         # Simulate 3 players
-make status           # Health check
-make audit-internet   # Offline internet-readiness config audit
-make logs             # Tail server logs
-make logs-watchdog    # Tail watchdog logs
-make logs-all         # Tail all service logs
-make restart          # Restart all services
-make stop             # Stop game server + watchdog
-make db-reset         # Reset database
+./install.sh demo
 ```
 
----
-
-## Configuration
-
-All settings are in `.env` (copied from `.env.example` during install). Key settings:
-
-| Setting | Code Default | `.env.example` Default | Description |
-|---------|-------------|----------------------|-------------|
-| `MOCK_GPIO` | `false` | `true` | Use mock GPIO. `.env.example` enables it for safe dev setup; set `false` for Pi 5 hardware. |
-| `TRIES_PER_PLAYER` | `2` | `2` | Number of drop attempts per turn |
-| `TRY_MOVE_SECONDS` | `30` | `30` | Time to move before auto-drop |
-| `TURN_TIME_SECONDS` | `90` | `90` | Hard limit for entire turn |
-| `ADMIN_API_KEY` | `changeme` | `changeme` | **Change this in production** |
-| `HOST` | `0.0.0.0` | `0.0.0.0` | Listen address. Use `127.0.0.1` in production behind nginx to prevent direct access. |
-| `PORT` | `8000` | `8000` | Server listen port |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost,http://127.0.0.1` | `http://localhost,http://127.0.0.1` | Comma-separated browser origins allowed to call API. **Set to your domain for internet deployment.** |
-| `TRUSTED_PROXIES` | `""` (empty) | `127.0.0.1/32,::1/128` | Comma-separated CIDRs of trusted reverse proxies. `.env.example` assumes nginx on localhost; empty = ignore X-Forwarded-For (safe when not behind a proxy). |
-| `WIN_SENSOR_ENABLED` | `true` | `true` | Enable hardware win sensor. When off, the game skips win/loss detection and advances the queue after the post-drop wait. |
-| `COIN_PULSES_PER_CREDIT` | `2` | `2` | Number of coin relay pulses per credit (e.g. 2 if the machine expects two coins). |
-| `EMBED_ALLOWED_ORIGINS` | `""` (empty) | `""` (empty) | Comma-separated origins allowed to frame embed pages. Empty = allow all. |
-| `WLED_ENABLED` | `false` | `false` | Enable optional WLED LED strip integration. |
-| `WLED_DEVICE_IP` | `""` (empty) | `""` (empty) | IP address of the WLED device on your network. |
-
-> **Note:** "Code Default" is the fallback value in `app/config.py` when a key is absent from `.env`. "`.env.example` Default" is the value shipped in the template that `install.sh` copies to `.env`. When running without an `.env` file the code defaults apply.
-
-For PoC demos, use `.env.demo` which has shorter timers (15s move, 45s turn) for faster cycles:
-
-```bash
-cp .env.demo .env
-# or: REMOTE_CLAW_ENV_FILE=.env.demo make run
-```
-
-Full configuration reference is in `.env.example` and [docs/queue-flow.md](docs/queue-flow.md#13-configuration-reference).
-
----
-
-## API
-
-### Public Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/queue/join` | Join the queue (name + email) |
-| DELETE | `/api/queue/leave` | Leave the queue — works in any state including active (Bearer token) |
-| GET | `/api/queue/status` | Queue length + current player |
-| GET | `/api/queue` | Full queue listing |
-| GET | `/api/session/me` | Your session state (Bearer token) |
-| GET | `/api/history` | Recent game results |
-| GET | `/api/health` | Server health status |
-| GET | `/api/stream/snapshot` | Single JPEG frame from built-in camera |
-| GET | `/api/stream/mjpeg` | MJPEG stream fallback (when built-in camera is available) |
-
-### Admin Endpoints (require `X-Admin-Key` header)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/admin/advance` | Force-end current turn |
-| POST | `/admin/emergency-stop` | Lock all GPIO |
-| POST | `/admin/unlock` | Unlock GPIO |
-| POST | `/admin/pause` | Pause queue |
-| POST | `/admin/resume` | Resume queue |
-| GET | `/admin/dashboard` | Full status dashboard |
-| GET | `/admin/config` | All configuration values with metadata |
-| PUT | `/admin/config` | Update config values (persists to `.env`) |
-| POST | `/admin/kick/{entry_id}` | Remove a specific player from the queue |
-| GET | `/admin/queue-details` | Detailed queue entries with IDs for admin actions |
-| GET | `/admin/wled/test` | Test WLED device connection |
-| POST | `/admin/wled/preset/{preset_id}` | Trigger a WLED preset (1–250) |
-| POST | `/admin/wled/on` | Turn WLED strip on |
-| POST | `/admin/wled/off` | Turn WLED strip off |
-| GET | `/admin/contacts/csv` | Download contacts as CSV |
-
-### Admin Panel
-
-A web-based admin panel is available at `/admin/panel`. It provides a graphical interface for the dashboard, game controls (skip player, pause/resume, emergency stop), queue management (view details, kick players), and live configuration editing. Authentication is handled in the browser via the admin API key.
-
-### WebSockets
-
-- `/ws/status` — Broadcast to all viewers (queue updates, state changes, keepalive pings)
-- `/ws/control` — Authenticated player channel (auth, controls including momentary drop via `drop_start`/`drop_end`, results)
-
-Interactive API docs available at `/api/docs` (Swagger UI) when running in dev/mock mode (`MOCK_GPIO=true`). Disabled in production for security.
-
----
-
-## Internet Deployment (50+ Users)
-
-Remote Claw is designed to serve 50+ concurrent internet users from a single Raspberry Pi 5. The architecture includes:
-
-### Built-in Protection Layers
-
-| Layer | Protection |
-|-------|-----------|
-| **nginx rate limiting** | 10 req/s per IP (API), 3 req/min per IP (queue join) |
-| **nginx connection limiting** | 30 connections per IP max |
-| **Application rate limiting** | 15 joins/hr per email, 30 joins/hr per IP, 25 Hz command rate |
-| **WebSocket limits** | 500 status viewers, 100 control connections, 1024-byte message max |
-| **Broadcast timeout** | 5s per-client send timeout prevents slow viewers from blocking others |
-| **TLS + security headers** | HSTS, CSP, X-Frame-Options, X-Content-Type-Options |
-| **Admin IP restriction** | Admin endpoints only accessible from private networks |
-
-### Pre-deployment Checklist
-
-Before opening to the internet:
-
-1. Change `ADMIN_API_KEY` from `changeme` to a strong random value
-2. Set `CORS_ALLOWED_ORIGINS` to your domain (e.g., `https://claw.yourdomain.com`)
-3. Set `TRUSTED_PROXIES=127.0.0.1/32,::1/128` (required for correct rate limiting behind nginx)
-4. Set up TLS certificates (Let's Encrypt recommended)
-5. Update `server_name` in `deploy/nginx/claw.conf` to your domain
-6. Run `./scripts/internet_readiness_audit.sh` to verify configuration
-7. Consider putting Cloudflare or a similar WAF in front for DDoS protection
-
-### Capacity
-
-| Resource | Capacity |
-|----------|----------|
-| Concurrent viewers (WebSocket) | 500 |
-| Concurrent queued players | 100 (WebSocket), unlimited (queue depth) |
-| Video stream (WebRTC) | Handled by MediaMTX, efficient per-viewer |
-| Video stream (MJPEG fallback) | 20 concurrent streams max |
-| API throughput | 10 req/s per IP with burst of 20 |
-
-See [docs/queue-flow.md](docs/queue-flow.md) for the complete architecture reference, flow charts, protocol documentation, and scaling analysis.
-
-If the Pi shares a public IP with another server (e.g. Grafana), follow [docs/brownrice-ssl-proxy.md](docs/brownrice-ssl-proxy.md) to terminate TLS on the server that owns port 443 and reverse-proxy to the Pi.
-Run the setup wizard on that server: `./scripts/setup_grafana_tls_proxy.sh`.
-
----
-
-## Testing
-
-```bash
-make test             # Full test suite
-make test-quick       # Quick run
-make simulate         # 3 simulated players (sequential)
-make simulate-parallel  # 5 simulated players (concurrent)
-make status           # Health check against running server
-```
-
----
-
-## Requirements
-
-### Development
-
-- Python 3.10+
-- No hardware required (uses mock GPIO)
-
-### Pi 5 Production
-
-- Raspberry Pi 5 with Pi OS 64-bit (Bookworm)
-- `python3-lgpio` (installed automatically)
-- `libopenblas0`, `libatlas-base-dev` (installed automatically, needed by OpenCV/numpy)
-- nginx (installed automatically)
-- MediaMTX (installed automatically)
-- Pi Camera Module **or** USB webcam (for live stream)
-
----
-
-## Safety
-
-Remote Claw includes multiple safety layers to prevent hardware damage and ensure fair play:
-
-- **SSOT deadline tracking** — all timers backed by monotonic clock deadlines; clients receive accurate `state_seconds_left` on every state change and reconnect
-- **DB deadline persistence** — `try_move_end_at` and `turn_end_at` written to SQLite for crash recovery reference
-- **State machine timeouts** — auto-drop if player is idle, hard turn timeout (90s), ready timeout (15s)
-- **Emergency stop** — admin endpoint locks all GPIO immediately
-- **Watchdog process** — independent monitor that forces GPIO off if the server crashes (3 consecutive health check failures)
-- **Rate limiting** — prevents input flooding (25 Hz max commands, nginx edge rate limiting)
-- **Direction conflict handling** — prevents opposing directions simultaneously
-- **Disconnect recovery** — directions released immediately on disconnect, 300s grace period for reconnection; timers continue running (no stuck queue)
-- **Periodic safety net** — checks every 10s for stuck states and auto-recovers
-- **Broadcast timeout** — per-client 5s send timeout prevents one slow viewer from blocking all others
-- **Queue broadcast on ready** — viewers see real-time queue state changes (not just join/leave/turn-end)
-
----
-
-## Camera Support
-
-Remote Claw supports two streaming modes:
-
-- **WebRTC via MediaMTX** — Primary mode. Uses Pi Camera Module or USB webcam via FFmpeg. Low-latency WebRTC stream proxied through nginx. The setup script auto-detects your camera type.
-- **Built-in MJPEG fallback** — If MediaMTX is not running (e.g., during development), the server captures directly from a USB camera via OpenCV and serves an MJPEG stream at `/api/stream/mjpeg`. Max 20 concurrent streams (enforced via semaphore).
-
----
-
-## Audio Feedback
-
-Remote Claw includes a `SoundEngine` (Web Audio API) that provides synthesized sound effects for game events: queue join, your-turn prompt, ready confirm, move, drop, dropping, win, loss, timer warning, and next-try. Custom audio files can be placed in the `web/sounds/` directory to override any synthesized sound. Supported formats: `.mp3`, `.wav`, `.ogg`, `.webm`. See the comment header in `web/sounds.js` for file naming conventions. Sound can be muted by players via a toggle in the UI (persisted in `localStorage`).
-
----
-
-## Embeddable Views
-
-Remote Claw can be embedded on external websites via iframe. Two embed modes are available:
-
-### Watch-Only (spectator stream)
-
-```html
-<iframe src="https://claw.yourdomain.com/embed/watch"
-        width="100%" height="360" frameborder="0"
-        allow="autoplay; encrypted-media" allowfullscreen
-        style="border:0; border-radius:8px; max-width:100%;"
-        loading="lazy" title="Remote Claw Machine"></iframe>
-```
-
-Displays the live camera stream with a HUD overlay showing game state, timer, try counter, queue length, and viewer count. Sends `postMessage` events to the parent page for integration.
-
-### Interactive (join queue + play)
-
-```html
-<iframe src="https://claw.yourdomain.com/embed/play"
-        width="100%" height="600" frameborder="0"
-        allow="autoplay; encrypted-media" allowfullscreen
-        style="border:0; border-radius:8px; max-width:100%;"
-        loading="lazy" title="Remote Claw Machine"></iframe>
-```
-
-Full game experience: join queue, wait for turn, control the claw with D-pad/keyboard, drop, and see results — all within the iframe. Uses `sessionStorage` for cross-origin safety. Supports sound effects, haptic feedback, and a `postMessage` API for bi-directional communication with the parent page.
-
-### Customization
-
-Both embeds accept query parameters for theming: `theme` (dark/light), `accent` (hex color), `bg` (hex color), `footer` (show/hide), `sounds` (on/off). The parent page can also send `postMessage` commands to programmatically join or leave the queue.
-
-Set `EMBED_ALLOWED_ORIGINS` in `.env` to restrict which sites can frame the embeds (empty = allow all).
-
-A **WordPress shortcode plugin** is included at `wordpress/eclaw-embed.php`. See **[docs/wordpress-embed.md](docs/wordpress-embed.md)** for the full embed guide including query parameters, postMessage API reference, and WordPress setup.
-
----
-
-## WLED Integration
-
-Remote Claw optionally controls a [WLED](https://kno.wled.ge/) LED strip to provide ambient lighting effects during gameplay. When enabled, the server sends fire-and-forget HTTP requests to the WLED device — failures are logged but never interrupt the game.
-
-### Setup
-
-1. Set up your WLED device and configure lighting presets in the WLED web UI (presets 1–250)
-2. Enable integration in `.env`:
-   ```ini
-   WLED_ENABLED=true
-   WLED_DEVICE_IP=192.168.1.100
-   ```
-3. Map game events to WLED preset IDs (0 = skip event):
-   ```ini
-   WLED_PRESET_WIN=1
-   WLED_PRESET_LOSS=2
-   WLED_PRESET_DROP=3
-   WLED_PRESET_START_TURN=4
-   WLED_PRESET_IDLE=5
-   WLED_PRESET_EXPIRE=0
-   ```
-
-### Events
-
-| Event | Triggered When |
-|-------|---------------|
-| `start_turn` | Player starts moving the claw |
-| `drop` | Player drops the claw |
-| `win` | Prize detected by win sensor |
-| `loss` | No prize detected after drop |
-| `idle` | Turn ends, machine returns to idle |
-| `expire` | Player's turn expires (timeout) |
-
-### Admin Controls
-
-The admin panel includes a **WLED Lights** section for testing: verify device connection (shows device name, version, LED count), trigger specific presets, and turn the strip on/off. Admin API endpoints are also available (`/admin/wled/test`, `/admin/wled/preset/{id}`, `/admin/wled/on`, `/admin/wled/off`).
-
----
-
-## Documentation
-
-- **[QUICKSTART.md](QUICKSTART.md)** — Step-by-step setup, wiring, camera configuration, and troubleshooting
-- **[docs/wordpress-embed.md](docs/wordpress-embed.md)** — Embeddable views guide: iframe snippets, WordPress shortcode plugin, query parameters, postMessage API
-- **[docs/queue-flow.md](docs/queue-flow.md)** — Complete architecture reference with Mermaid flow charts:
-  - System architecture diagram
-  - **Single Source of Truth (SSOT) design** — what is authoritative where
-  - Queue entry lifecycle (database states, including active-player leave)
-  - State machine turn flow with SSOT deadline tracking
-  - Player join & turn sequence diagram (with deadline/broadcast annotations)
-  - Page refresh & reconnection flow (with SSOT timer sync)
-  - Disconnect & recovery flow
-  - Safety nets & recovery architecture
-  - WebSocket message reference (with `state_seconds_left` / `turn_seconds_left` fields)
-  - REST API reference
-  - Database schema (ER diagram, deadline columns documented)
-  - Authentication & security measures
-  - Scaling analysis for 50+ users
-  - Full configuration reference
-  - Hardware wiring diagram
-  - Deployment architecture
-  - Frontend architecture (with SSOT sync details)
-  - Reconnection behavior
-
----
-
-## Known Limitations
-
-- Rate limiting uses both an in-memory fast-path cache and a persistent SQLite `rate_limits` table (surviving restarts) — nginx handles edge rate limiting for production
-- Frontend is vanilla JS with no build tooling (intentional simplicity)
-- Single uvicorn worker (required for GPIO ownership and shared state) — async handles concurrency
-- SQLite is the only supported database (sufficient for single-machine deployment)
-- Built-in MJPEG fallback requires `opencv-python-headless` and a USB camera (not Pi Camera CSI)
-- `current_try` counter is in-memory only — on server restart, active entries are expired and the counter resets (by design: `cleanup_stale` handles recovery)
+The installer sets up:
+- Python virtual environment + dependencies.
+- MediaMTX service.
+- nginx reverse proxy config.
+- `claw-server` and `claw-watchdog` systemd services.
+
+## Documentation Index
+
+- [QUICKSTART.md](QUICKSTART.md): setup and operations guide.
+- [docs/queue-flow.md](docs/queue-flow.md): protocol and state-flow reference.
+- [docs/wordpress-embed.md](docs/wordpress-embed.md): embed and WordPress integration.
+- [docs/video-stream-ssl-fix.md](docs/video-stream-ssl-fix.md): reverse-proxy streaming troubleshooting.
+- [docs/brownrice-ssl-proxy.md](docs/brownrice-ssl-proxy.md): TLS front-door architecture.
