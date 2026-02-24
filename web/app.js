@@ -24,6 +24,21 @@
   let _moveStartTime = 0;
   let _lastWarningBeep = 0; // Prevent double-beeps
 
+  const uiText = {
+    queue_title: "You're In Line!",
+    queue_subtitle: "Hang tight — we'll pop your turn prompt automatically.",
+    ready_title: "IT'S YOUR TURN!",
+    ready_subtitle: "Get ready to control the claw",
+    result_win_title: "YOU WON!",
+    result_win_message: "Congratulations! You grabbed a prize!",
+    result_loss_title: "😞",
+    result_loss_message: "Better luck next time!",
+    result_turn_over_title: "Turn Over",
+    result_turn_over_message: "Thanks for playing!",
+    result_expired_title: "Time's Up",
+    result_expired_message: "Your turn has ended.",
+  };
+
   // -- Sound Engine ---------------------------------------------------------
   const sfx = new SoundEngine();
 
@@ -55,6 +70,10 @@
   const currentPlayerHud = $("#current-player-hud");
   const playerHudName = $("#player-hud-name");
   const streamReconnectBtn = $("#stream-reconnect");
+  const waitingTitle = $("#waiting-panel h2");
+  const waitingSubtitle = $("#waiting-panel .waiting-note");
+  const readyTitle = $("#ready-panel .ready-alert h2");
+  const readySubtitle = $("#ready-panel .ready-subtitle");
 
   // -- Sound Toggle ---------------------------------------------------------
   function updateSoundIcon() {
@@ -84,7 +103,27 @@
   document.addEventListener("touchstart", unlockAudio);
   document.addEventListener("keydown", unlockAudio);
 
+  function applyUiText() {
+    if (waitingTitle) waitingTitle.textContent = uiText.queue_title;
+    if (waitingSubtitle) waitingSubtitle.textContent = uiText.queue_subtitle;
+    if (readyTitle) readyTitle.textContent = uiText.ready_title;
+    if (readySubtitle) readySubtitle.textContent = uiText.ready_subtitle;
+  }
+
+  async function loadUiText() {
+    try {
+      const res = await fetch("/api/ui-text");
+      if (!res.ok) return;
+      const data = await res.json();
+      Object.assign(uiText, data);
+      applyUiText();
+    } catch (_err) {}
+  }
+
   // -- Initialization -------------------------------------------------------
+
+  applyUiText();
+  loadUiText();
 
   // Try to restore session from localStorage
   const savedToken = localStorage.getItem("remote_claw_token");
@@ -680,11 +719,11 @@
           if (result === "win") {
             icon.textContent = "\u{1F3C6}";
             icon.classList.add("win-icon");
-            title.textContent = "YOU WON!";
+            title.textContent = uiText.result_win_title;
             title.className = "win";
             glow.classList.add("win-glow");
             resultPanel.classList.add("result-win");
-            message.textContent = "Congratulations! You grabbed a prize!";
+            message.textContent = uiText.result_win_message;
             sfx.playWin();
             vibrate([100, 50, 100, 50, 200]);
             triggerScreenFlash("win");
@@ -694,39 +733,39 @@
           } else if (result === "loss" && lastWinSensorEnabled === false) {
             icon.textContent = "\u{1F3AE}";
             icon.classList.add("loss-icon");
-            title.textContent = "Turn Over";
+            title.textContent = uiText.result_turn_over_title;
             title.className = "";
             resultPanel.classList.add("result-loss");
-            message.textContent = "Thanks for playing!";
+            message.textContent = uiText.result_turn_over_message;
           } else if (result === "loss") {
             icon.textContent = "\u{1F61E}";
             icon.classList.add("loss-icon");
-            title.textContent = "😞";
+            title.textContent = uiText.result_loss_title;
             title.className = "loss";
             glow.classList.add("loss-glow");
             resultPanel.classList.add("result-loss");
-            message.textContent = "Better luck next time!";
+            message.textContent = uiText.result_loss_message;
             sfx.playLoss();
             triggerScreenFlash("loss");
           } else if (result === "done") {
             icon.textContent = "\u{1F3AE}";
             icon.classList.add("loss-icon");
-            title.textContent = "Turn Over";
+            title.textContent = uiText.result_turn_over_title;
             title.className = "";
             resultPanel.classList.add("result-loss");
-            message.textContent = "Thanks for playing!";
+            message.textContent = uiText.result_turn_over_message;
           } else if (result === "expired") {
             icon.textContent = "\u{231B}";
             icon.classList.add("loss-icon");
-            title.textContent = "Time's Up";
+            title.textContent = uiText.result_expired_title;
             title.className = "loss";
             glow.classList.add("loss-glow");
             resultPanel.classList.add("result-loss");
-            message.textContent = "Your turn has ended.";
+            message.textContent = uiText.result_expired_message;
             sfx.playLoss();
           } else {
             icon.textContent = "\u{1F3AE}";
-            title.textContent = "Turn Over";
+            title.textContent = uiText.result_turn_over_title;
             title.className = "";
             message.textContent = `Result: ${result}`;
           }

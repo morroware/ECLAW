@@ -161,6 +161,20 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "cors_allowed_origins":      {"cat": "Server",       "label": "CORS Allowed Origins",       "desc": "Comma-separated list of allowed browser origins.", "restart": True},
     "mock_gpio":                 {"cat": "Server",       "label": "Mock GPIO",                  "desc": "Use mock GPIO (no real hardware). Set false for Pi 5.", "restart": True},
 
+    # -- UI Text --
+    "ui_queue_title":            {"cat": "UI Text",      "label": "Queue Card Title",             "desc": "Heading shown when a player is waiting in queue."},
+    "ui_queue_subtitle":         {"cat": "UI Text",      "label": "Queue Card Subtitle",          "desc": "Subtext shown on the waiting-in-queue card."},
+    "ui_ready_title":            {"cat": "UI Text",      "label": "Ready Card Title",             "desc": "Heading shown on the ready prompt card."},
+    "ui_ready_subtitle":         {"cat": "UI Text",      "label": "Ready Card Subtitle",          "desc": "Subtext shown on the ready prompt card."},
+    "ui_result_win_title":       {"cat": "UI Text",      "label": "Win Card Title",               "desc": "Title shown on the result card after a win."},
+    "ui_result_win_message":     {"cat": "UI Text",      "label": "Win Card Message",             "desc": "Body message shown on the result card after a win."},
+    "ui_result_loss_title":      {"cat": "UI Text",      "label": "Loss Card Title",              "desc": "Title shown on the result card after a loss (sensor enabled)."},
+    "ui_result_loss_message":    {"cat": "UI Text",      "label": "Loss Card Message",            "desc": "Body message shown on the result card after a loss (sensor enabled)."},
+    "ui_result_turn_over_title": {"cat": "UI Text",      "label": "Turn Over Card Title",         "desc": "Title shown for turn-over outcomes (loss with sensor disabled or done)."},
+    "ui_result_turn_over_message":{"cat": "UI Text",      "label": "Turn Over Card Message",       "desc": "Body message shown for turn-over outcomes."},
+    "ui_result_expired_title":   {"cat": "UI Text",      "label": "Expired Card Title",           "desc": "Title shown when a turn expires."},
+    "ui_result_expired_message": {"cat": "UI Text",      "label": "Expired Card Message",         "desc": "Body message shown when a turn expires."},
+
     # -- Watchdog --
     "watchdog_health_url":       {"cat": "Watchdog",     "label": "Health URL",                 "desc": "URL the watchdog pings for health checks."},
     "watchdog_check_interval_s": {"cat": "Watchdog",     "label": "Check Interval (seconds)",   "desc": "Seconds between watchdog health checks."},

@@ -42,6 +42,46 @@ async def test_health_endpoint(api_client):
 
 
 @pytest.mark.anyio
+async def test_embed_pages_are_served_without_html_extension(api_client):
+    watch = await api_client.get("/embed/watch")
+    assert watch.status_code == 200
+    assert "text/html" in watch.headers["content-type"]
+
+    play = await api_client.get("/embed/play")
+    assert play.status_code == 200
+    assert "text/html" in play.headers["content-type"]
+
+
+
+
+@pytest.mark.anyio
+async def test_ui_text_endpoint(api_client):
+    res = await api_client.get("/api/ui-text")
+    assert res.status_code == 200
+    data = res.json()
+    assert "queue_title" in data
+    assert "result_win_message" in data
+
+
+@pytest.mark.anyio
+async def test_admin_config_updates_ui_text(api_client):
+    original = settings.ui_result_win_message
+    try:
+        res = await api_client.put(
+            "/admin/config",
+            json={"changes": {"ui_result_win_message": "Custom win text"}},
+            headers={"X-Admin-Key": "changeme"},
+        )
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+
+        check = await api_client.get("/api/ui-text")
+        assert check.status_code == 200
+        assert check.json()["result_win_message"] == "Custom win text"
+    finally:
+        settings.ui_result_win_message = original
+
+@pytest.mark.anyio
 async def test_queue_join_and_status(api_client):
     # Join queue
     res = await api_client.post(

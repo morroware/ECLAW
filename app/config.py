@@ -95,6 +95,20 @@ class Settings(BaseSettings):
     # -- Embed configuration ---------------------------------------------------
     embed_allowed_origins: str = ""  # Comma-separated origins allowed to frame embed pages
 
+    # -- Player-facing UI text (editable via admin panel) ----------------------
+    ui_queue_title: str = "You're In Line!"
+    ui_queue_subtitle: str = "Hang tight — we'll pop your turn prompt automatically."
+    ui_ready_title: str = "IT'S YOUR TURN!"
+    ui_ready_subtitle: str = "Get ready to control the claw"
+    ui_result_win_title: str = "YOU WON!"
+    ui_result_win_message: str = "Congratulations! You grabbed a prize!"
+    ui_result_loss_title: str = "😞"
+    ui_result_loss_message: str = "Better luck next time!"
+    ui_result_turn_over_title: str = "Turn Over"
+    ui_result_turn_over_message: str = "Thanks for playing!"
+    ui_result_expired_title: str = "Time's Up"
+    ui_result_expired_message: str = "Your turn has ended."
+
     # -- WLED LED strip integration (optional) --------------------------------
     wled_enabled: bool = False
     wled_device_ip: str = ""
