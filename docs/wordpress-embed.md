@@ -1,244 +1,90 @@
-# Embedding the Remote Claw Machine
+# WordPress and Iframe Embedding Guide
 
-Embed the live claw machine stream or full interactive player on your WordPress site (or any website).
+This guide documents the current embed surfaces provided by the `web/embed/` frontend.
 
-## Quick Start — Raw iframe
+## 1. Available Embed Endpoints
 
-No plugin needed. Paste this HTML into any page:
+| Endpoint | Mode | Intended Use |
+|---|---|---|
+| `/embed/watch` | Spectator | Live stream + status HUD only |
+| `/embed/play` | Interactive | Queue join, readiness, controls, and results |
 
-### Watch-Only (spectator stream)
+## 2. Basic Iframe Examples
 
-```html
-<iframe src="https://claw.yourdomain.com/embed/watch"
-        width="100%" height="360" frameborder="0"
-        allow="autoplay; encrypted-media" allowfullscreen
-        style="border:0; border-radius:8px; max-width:100%;"
-        loading="lazy" title="Remote Claw Machine"></iframe>
-```
-
-### Full Interactive (join queue + play)
+### Watch embed
 
 ```html
-<iframe src="https://claw.yourdomain.com/embed/play"
-        width="100%" height="600" frameborder="0"
-        allow="autoplay; encrypted-media" allowfullscreen
-        style="border:0; border-radius:8px; max-width:100%;"
-        loading="lazy" title="Remote Claw Machine"></iframe>
+<iframe
+  src="https://claw.example.com/embed/watch"
+  width="100%"
+  height="360"
+  style="border:0; border-radius:8px;"
+  loading="lazy"
+  allow="autoplay; encrypted-media"
+  title="Remote Claw Watch">
+</iframe>
 ```
 
-Replace `claw.yourdomain.com` with your actual ECLAW server domain.
+### Interactive embed
 
----
-
-## WordPress Shortcode Plugin
-
-For a nicer WordPress editing experience, install the shortcode plugin:
-
-1. Copy `wordpress/eclaw-embed.php` to `wp-content/mu-plugins/eclaw-embed.php`
-2. Use the `[eclaw]` shortcode in any post or page:
-
-```
-[eclaw url="https://claw.yourdomain.com"]
-```
-
-### Shortcode Attributes
-
-| Attribute | Default | Description |
-|-----------|---------|-------------|
-| `url`     | *(required)* | Base URL of the ECLAW server |
-| `mode`    | `watch`  | `watch` (spectator only) or `play` (full interactive) |
-| `width`   | `100%`   | iframe width |
-| `height`  | `480`    | iframe height in pixels |
-| `theme`   | `dark`   | `dark` or `light` |
-| `footer`  | `1`      | `0` to hide the footer bar (watch mode) |
-| `sounds`  | `1`      | `0` to start muted (play mode) |
-| `accent`  | *(default purple)* | Hex accent color without `#` (e.g. `ef4444` for red) |
-
-### Examples
-
-```
-[eclaw mode="watch" url="https://claw.yourdomain.com" height="360"]
-
-[eclaw mode="play" url="https://claw.yourdomain.com" height="600" theme="light"]
-
-[eclaw url="https://claw.yourdomain.com" footer="0" accent="3b82f6"]
+```html
+<iframe
+  src="https://claw.example.com/embed/play"
+  width="100%"
+  height="620"
+  style="border:0; border-radius:8px;"
+  loading="lazy"
+  allow="autoplay; encrypted-media"
+  title="Remote Claw Play">
+</iframe>
 ```
 
----
+## 3. Query Parameters
 
-## Query Parameters
-
-Both embed pages accept URL query parameters for customization:
-
-| Parameter  | Values          | Default     | Applies To |
-|-----------|----------------|-------------|------------|
-| `theme`   | `dark`, `light` | `dark`      | Both       |
-| `footer`  | `0`, `1`        | `1`         | Watch only |
-| `playurl` | URL string      | ECLAW origin | Watch only (target for "Play Now" link) |
-| `sounds`  | `0`, `1`        | `1`         | Both       |
-| `accent`  | hex (no `#`)    | `8b5cf6`    | Both       |
-| `bg`      | hex (no `#`)    | `0a0a0f`    | Both       |
+| Parameter | Values | Effect |
+|---|---|---|
+| `theme` | `dark` / `light` | Base color scheme |
+| `accent` | hex color | Accent color override |
+| `bg` | hex color | Background override |
+| `footer` | `show` / `hide` | Footer visibility |
+| `sounds` | `on` / `off` | Initial sound preference |
 
 Example:
-```
-https://claw.yourdomain.com/embed/watch?theme=light&footer=0&accent=ef4444
-```
 
----
-
-## postMessage API
-
-The embed pages communicate with the parent page via `window.postMessage`. This lets your WordPress site react to game events.
-
-### Events (embed → parent)
-
-Listen for events on your page:
-
-```javascript
-window.addEventListener("message", function(event) {
-  if (event.data && event.data.source === "eclaw-embed") {
-    console.log("ECLAW event:", event.data.type, event.data);
-  }
-});
+```text
+/embed/play?theme=dark&accent=%23ff3366&footer=hide
 ```
 
-| Event Type      | Data Fields                          | Description |
-|----------------|--------------------------------------|-------------|
-| `queue_update` | `queue_length`, `viewer_count`       | Queue or viewer count changed |
-| `state_update` | *(varies)*                           | Game state changed |
-| `turn_end`     | `result` (`"win"` or `"loss"`)       | A player's turn ended |
-| `joined`       | `position`                           | Player joined the queue (play embed) |
-| `playing`      | —                                     | Player's active turn started (play embed) |
+## 4. Security Controls
 
-### Commands (parent → embed)
+Set `EMBED_ALLOWED_ORIGINS` in `.env` to restrict framing origins.
 
-Send commands to the interactive embed:
+- Empty value: no origin restriction from app-level embed middleware.
+- Non-empty value: app emits `Content-Security-Policy: frame-ancestors ...` for `/embed/*` routes.
 
-```javascript
-var iframe = document.querySelector("iframe");
+For production, mirror the same policy in nginx headers.
 
-// Programmatic join
-iframe.contentWindow.postMessage({
-  target: "eclaw-embed",
-  action: "join",
-  name: "PlayerName",
-  email: "player@example.com"
-}, "https://claw.yourdomain.com");
+## 5. postMessage Integration
 
-// Leave queue
-iframe.contentWindow.postMessage({
-  target: "eclaw-embed",
-  action: "leave"
-}, "https://claw.yourdomain.com");
-```
+Embed pages can send status messages to a parent frame, and parent pages can issue commands.
 
----
+Recommended integration pattern:
+1. Parent registers a strict origin check on `window.message`.
+2. Parent only sends commands to the known embed origin.
+3. Parent never stores admin secrets in client-side JavaScript.
 
-## Server Configuration
+## 6. WordPress Plugin
 
-### EMBED_ALLOWED_ORIGINS
+This repository includes `wordpress/eclaw-embed.php`.
 
-By default, the embed pages allow framing from any origin (`frame-ancestors *`). To restrict which sites can embed:
+Typical usage:
+1. Install plugin in WordPress.
+2. Configure base claw URL in plugin settings.
+3. Insert shortcode on page/post for watch or play mode.
+4. Confirm your WordPress origin is allowed by `EMBED_ALLOWED_ORIGINS`.
 
-```env
-EMBED_ALLOWED_ORIGINS=https://mysite.com,https://www.mysite.com
-```
+## 7. Troubleshooting
 
-### Direct Access (no nginx)
-
-When accessing the ECLAW server directly on port 8000 (without nginx), the
-FastAPI `EmbedHeadersMiddleware` handles framing headers and CSP automatically.
-No extra configuration is needed — the embed pages work out of the box.
-
-Verify the embed is reachable by opening the URL directly in a browser:
-
-```
-http://<YOUR_SERVER_IP>:8000/embed/play
-```
-
-You should see the join form overlaid on the stream. If you get a connection
-error, the FastAPI server is not running or the port is blocked.
-
-### nginx
-
-All three nginx configs (`claw.conf`, `claw-lan.conf`, `claw-proxy.conf`)
-include an `/embed/` location block that:
-
-1. Overrides the server-level `X-Frame-Options: DENY` for embed pages
-2. Sets a `Content-Security-Policy` with `frame-ancestors *` (or your specified origins)
-3. Allows Google Fonts loading (used by the embed UI)
-4. Resolves extensionless URLs (`/embed/play` → `/embed/play.html`)
-
-If you use a custom nginx config, ensure the embed paths do NOT inherit
-`X-Frame-Options: DENY` from the server block and include the full CSP header.
-See any of the provided configs for the exact directives.
-
----
-
-## Troubleshooting
-
-### "Invalid response" / connection error
-
-This usually means the browser cannot load the embed page at all:
-
-1. **Server not running** — verify the ECLAW server is up:
-   ```bash
-   curl -s -o /dev/null -w "%{http_code}" http://<SERVER_IP>:8000/embed/play
-   ```
-   You should get `200`. If you get `000` or a connection error, start the server
-   (`make run` or `uvicorn app.main:app`).
-
-2. **Port blocked** — if the server is running but you get no response from an
-   external machine, check your firewall allows inbound traffic on port 8000
-   (or whichever port you use):
-   ```bash
-   sudo ufw allow 8000/tcp   # Ubuntu/Debian
-   ```
-
-3. **nginx returning 404 for embed paths** — if you see a 404 or JSON
-   `{"detail":"Not Found"}` when opening `/embed/play`, your nginx `/embed/`
-   location block may be missing `$uri.html` in the `try_files` directive.
-   The correct directive is:
-   ```nginx
-   try_files $uri $uri.html $uri/ =404;
-   ```
-
-### iframe blocked / blank
-
-- Open your browser's developer console (F12) and check for errors
-- Look for `X-Frame-Options` or `frame-ancestors` CSP violations
-- Ensure your nginx config has the `/embed/` location block — without it, the
-  server-level `X-Frame-Options: DENY` blocks all framing
-- If using `EMBED_ALLOWED_ORIGINS`, verify your embedding site's origin is listed
-  (must match exactly, including protocol: `https://mysite.com`)
-
-### Mixed content (HTTPS page embedding HTTP iframe)
-
-Browsers block "mixed content" — an HTTPS page cannot load an HTTP iframe.
-
-- If your embedding site (e.g., WordPress) uses HTTPS, the ECLAW server **must
-  also be HTTPS**. Use the `claw.conf` or `claw-proxy.conf` nginx config with
-  a TLS certificate (e.g., Let's Encrypt).
-- Accessing the ECLAW server by raw IP + port (`http://1.2.3.4:8000`) will
-  always be HTTP. This works when the embedding page is also HTTP, but fails
-  when the embedding page is HTTPS.
-- For production, always use a domain name with TLS.
-
-### No video / black screen
-
-- The iframe needs `allow="autoplay; encrypted-media"` — included in both the shortcode and example code
-- Video is muted by default (required for autoplay to work in browsers)
-- Check that MediaMTX is running and the `/stream/cam/whep` endpoint is reachable:
-  ```bash
-  curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8889/cam/whep
-  ```
-- If MediaMTX is not running, the stream shows a black screen but the game
-  controls (join form, queue, D-pad) still work normally
-
-### Storage issues in iframes
-
-- The play embed uses `sessionStorage` (not `localStorage`) to avoid cross-origin storage restrictions
-- Session is not persisted across page reloads — this is by design for iframe contexts
-- Some browsers with strict third-party cookie settings may restrict
-  `sessionStorage` in cross-origin iframes — players can still use the embed
-  but won't auto-rejoin on refresh
+- Blank iframe: verify CSP `frame-ancestors` and nginx headers.
+- No controls: interactive mode requires `/ws/control` and API reachability.
+- No stream: verify MediaMTX path routing or MJPEG fallback availability.
