@@ -42,6 +42,17 @@ async def test_health_endpoint(api_client):
 
 
 @pytest.mark.anyio
+async def test_embed_pages_are_served_without_html_extension(api_client):
+    watch = await api_client.get("/embed/watch")
+    assert watch.status_code == 200
+    assert "text/html" in watch.headers["content-type"]
+
+    play = await api_client.get("/embed/play")
+    assert play.status_code == 200
+    assert "text/html" in play.headers["content-type"]
+
+
+@pytest.mark.anyio
 async def test_queue_join_and_status(api_client):
     # Join queue
     res = await api_client.post(
