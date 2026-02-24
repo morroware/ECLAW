@@ -1552,16 +1552,19 @@ button:hover .btn-shine {
   .player-hud-icon { font-size: 0.75rem; }
 }
 
-/* Mobile portrait — prioritize immersive video and remove top letterboxing */
-@media (max-width: 767px) and (orientation: portrait) {
+/* Mobile screens — tighter stream framing to remove dead space */
+@media (max-width: 767px) {
   #stream-video {
-    object-fit: cover;
-    object-position: center top;
+    /* Fill phone viewport and crop deeper into active play area. */
+    object-fit: cover !important;
+    object-position: center 30%;
+    transform: scale(1.22);
+    transform-origin: center 30%;
   }
 
   #hud-top {
     padding-top: 6px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.26) 58%, transparent 100%);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.28) 55%, transparent 100%);
   }
 
   #hud-top-right {
