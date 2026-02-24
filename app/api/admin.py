@@ -31,6 +31,7 @@ _RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
     "turn_time_seconds":            (5, 3600),
     "try_move_seconds":             (5, 3600),
     "post_drop_wait_seconds":       (1, 300),
+    "post_drop_wait_no_sensor_seconds": (1, 300),
     "ready_prompt_seconds":         (5, 300),
     "queue_grace_period_seconds":   (0, 3600),
 
@@ -122,6 +123,7 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "turn_time_seconds":         {"cat": "Timing",       "label": "Turn Time (seconds)",        "desc": "Hard time limit for an entire turn (all tries).", "restart": True},
     "try_move_seconds":          {"cat": "Timing",       "label": "Move Time (seconds)",        "desc": "Time allowed to move the claw before auto-drop."},
     "post_drop_wait_seconds":    {"cat": "Timing",       "label": "Post-Drop Wait (seconds)",   "desc": "Time to wait after drop for win sensor."},
+    "post_drop_wait_no_sensor_seconds": {"cat": "Timing",   "label": "Post-Drop Wait w/o Sensor (seconds)", "desc": "Time to wait after drop when the win sensor is disabled."},
     "ready_prompt_seconds":      {"cat": "Timing",       "label": "Ready Prompt (seconds)",     "desc": "Time the player has to press Ready.", "restart": True},
     "queue_grace_period_seconds":{"cat": "Timing",       "label": "Queue Grace Period (seconds)","desc": "Seconds before stale queue entries are cleaned on restart."},
 

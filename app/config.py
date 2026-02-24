@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     turn_time_seconds: int = 90
     try_move_seconds: int = 30
     post_drop_wait_seconds: int = 8
+    post_drop_wait_no_sensor_seconds: int = 3
     ready_prompt_seconds: int = 15
     queue_grace_period_seconds: int = 300
 
