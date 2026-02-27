@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     wled_preset_start_turn: int = 0
     wled_preset_idle: int = 0
     wled_preset_expire: int = 0
+    wled_preset_grab: int = 0           # Fired during POST_DROP when win sensor is off (claw returning)
+    wled_result_display_seconds: float = 5.0  # How long win/loss/drop/expire/grab shows before reverting to idle
 
     # DB maintenance: hours to keep completed entries before pruning
     db_retention_hours: int = 48
