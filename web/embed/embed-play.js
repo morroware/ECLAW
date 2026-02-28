@@ -206,6 +206,13 @@
 
   // -- Video Stream --------------------------------------------------------
 
+  var playOverlay = $("#play-overlay");
+  var playOverlayBtn = $("#play-overlay-btn");
+  var muteToggle = $("#mute-toggle");
+  var pipToggle = $("#pip-toggle");
+  var fullscreenToggle = $("#fullscreen-toggle");
+  var videoControls = $("#video-controls");
+
   function initStream() {
     var video = $("#stream-video");
     streamPlayer = new StreamPlayer(video, "/stream/cam");
@@ -216,12 +223,162 @@
         streamReconnectBtn.classList.remove("hidden");
       } else if (status === "playing") {
         streamReconnectBtn.classList.add("hidden");
+        // Check if autoplay actually started
+        detectAutoplayBlock(video);
       }
     };
 
     streamPlayer.connect().catch(function (err) {
       console.warn("Stream not available:", err.message);
     });
+  }
+
+  // Detect if autoplay was blocked and show the play overlay
+  function detectAutoplayBlock(video) {
+    if (!video) return;
+    // Give the browser a moment to attempt autoplay
+    setTimeout(function () {
+      if (video.paused && video.readyState >= 2) {
+        showPlayOverlay();
+      }
+    }, 500);
+
+    // Also listen for the case where media is loaded but paused
+    video.addEventListener("canplay", function onCanPlay() {
+      if (video.paused) {
+        showPlayOverlay();
+      }
+      video.removeEventListener("canplay", onCanPlay);
+    });
+  }
+
+  function showPlayOverlay() {
+    if (playOverlay) playOverlay.classList.remove("hidden");
+  }
+
+  function hidePlayOverlay() {
+    if (playOverlay) playOverlay.classList.add("hidden");
+  }
+
+  // Click the play overlay to start video
+  if (playOverlayBtn) {
+    playOverlayBtn.addEventListener("click", function () {
+      var video = $("#stream-video");
+      if (video) {
+        video.play().then(function () {
+          hidePlayOverlay();
+        }).catch(function () {
+          // Try muted autoplay as last resort
+          video.muted = true;
+          video.play().then(function () {
+            hidePlayOverlay();
+            updateMuteUI(true);
+          }).catch(function () {});
+        });
+      }
+    });
+  }
+
+  // Also allow clicking anywhere on the overlay
+  if (playOverlay) {
+    playOverlay.addEventListener("click", function (e) {
+      if (e.target === playOverlay) {
+        playOverlayBtn.click();
+      }
+    });
+  }
+
+  // -- Mute / Unmute Toggle ------------------------------------------------
+
+  function updateMuteUI(muted) {
+    var iconMuted = $("#icon-muted");
+    var iconUnmuted = $("#icon-unmuted");
+    if (iconMuted && iconUnmuted) {
+      if (muted) {
+        iconMuted.classList.remove("hidden");
+        iconUnmuted.classList.add("hidden");
+        if (muteToggle) muteToggle.setAttribute("aria-label", "Unmute");
+      } else {
+        iconMuted.classList.add("hidden");
+        iconUnmuted.classList.remove("hidden");
+        if (muteToggle) muteToggle.setAttribute("aria-label", "Mute");
+      }
+    }
+  }
+
+  if (muteToggle) {
+    muteToggle.addEventListener("click", function () {
+      var video = $("#stream-video");
+      if (!video) return;
+      video.muted = !video.muted;
+      updateMuteUI(video.muted);
+    });
+  }
+
+  // -- Picture-in-Picture Toggle -------------------------------------------
+
+  if (pipToggle) {
+    if (!document.pictureInPictureEnabled) {
+      pipToggle.classList.add("hidden");
+    } else {
+      pipToggle.addEventListener("click", function () {
+        var video = $("#stream-video");
+        if (!video) return;
+        if (document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch(function () {});
+        } else {
+          video.requestPictureInPicture().catch(function () {});
+        }
+      });
+    }
+  }
+
+  // -- Fullscreen Toggle ---------------------------------------------------
+
+  if (fullscreenToggle) {
+    fullscreenToggle.addEventListener("click", function () {
+      var container = $("#embed-app");
+      if (!container) return;
+
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+      }
+    });
+
+    // Update icon on fullscreen change
+    function onFullscreenChange() {
+      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      var iconExpand = $("#icon-expand");
+      var iconCompress = $("#icon-compress");
+      if (iconExpand && iconCompress) {
+        iconExpand.classList.toggle("hidden", isFs);
+        iconCompress.classList.toggle("hidden", !isFs);
+      }
+    }
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+  }
+
+  // -- Video Controls Visibility with Controls Panel -----------------------
+
+  // Shift video controls up when controls-panel is visible
+  function updateVideoControlsPosition() {
+    if (!videoControls) return;
+    var ctrlPanel = $("#controls-panel");
+    if (ctrlPanel && !ctrlPanel.classList.contains("hidden")) {
+      videoControls.classList.add("above-controls");
+    } else {
+      videoControls.classList.remove("above-controls");
+    }
+  }
+
+  // Observe controls panel visibility changes
+  var _controlsPanelObserver = new MutationObserver(updateVideoControlsPosition);
+  if (controlsPanel) {
+    _controlsPanelObserver.observe(controlsPanel, { attributes: true, attributeFilter: ["class"] });
   }
 
   if (streamReconnectBtn) {

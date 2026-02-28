@@ -52,6 +52,11 @@
   // -- Video Stream --------------------------------------------------------
   var video = $("#stream-video");
   var streamPlayer = new StreamPlayer(video, "/stream/cam");
+  var playOverlay = $("#play-overlay");
+  var playOverlayBtn = $("#play-overlay-btn");
+  var muteToggle = $("#mute-toggle");
+  var pipToggle = $("#pip-toggle");
+  var fullscreenToggle = $("#fullscreen-toggle");
 
   streamPlayer.onStatusChange = function (status) {
     if (!streamReconnectBtn) return;
@@ -59,6 +64,7 @@
       streamReconnectBtn.classList.remove("hidden");
     } else if (status === "playing") {
       streamReconnectBtn.classList.add("hidden");
+      detectAutoplayBlock(video);
     }
   };
 
@@ -73,6 +79,122 @@
         streamPlayer.reconnect();
       }
     });
+  }
+
+  // -- Autoplay Detection --------------------------------------------------
+
+  function detectAutoplayBlock(vid) {
+    if (!vid) return;
+    setTimeout(function () {
+      if (vid.paused && vid.readyState >= 2) {
+        showPlayOverlay();
+      }
+    }, 500);
+
+    vid.addEventListener("canplay", function onCanPlay() {
+      if (vid.paused) showPlayOverlay();
+      vid.removeEventListener("canplay", onCanPlay);
+    });
+  }
+
+  function showPlayOverlay() {
+    if (playOverlay) playOverlay.classList.remove("hidden");
+  }
+
+  function hidePlayOverlay() {
+    if (playOverlay) playOverlay.classList.add("hidden");
+  }
+
+  if (playOverlayBtn) {
+    playOverlayBtn.addEventListener("click", function () {
+      if (video) {
+        video.play().then(function () {
+          hidePlayOverlay();
+        }).catch(function () {
+          video.muted = true;
+          video.play().then(function () {
+            hidePlayOverlay();
+            updateMuteUI(true);
+          }).catch(function () {});
+        });
+      }
+    });
+  }
+
+  if (playOverlay) {
+    playOverlay.addEventListener("click", function (e) {
+      if (e.target === playOverlay && playOverlayBtn) playOverlayBtn.click();
+    });
+  }
+
+  // -- Mute / Unmute Toggle ------------------------------------------------
+
+  function updateMuteUI(muted) {
+    var iconMuted = $("#icon-muted");
+    var iconUnmuted = $("#icon-unmuted");
+    if (iconMuted && iconUnmuted) {
+      if (muted) {
+        iconMuted.classList.remove("hidden");
+        iconUnmuted.classList.add("hidden");
+        if (muteToggle) muteToggle.setAttribute("aria-label", "Unmute");
+      } else {
+        iconMuted.classList.add("hidden");
+        iconUnmuted.classList.remove("hidden");
+        if (muteToggle) muteToggle.setAttribute("aria-label", "Mute");
+      }
+    }
+  }
+
+  if (muteToggle) {
+    muteToggle.addEventListener("click", function () {
+      if (!video) return;
+      video.muted = !video.muted;
+      updateMuteUI(video.muted);
+    });
+  }
+
+  // -- Picture-in-Picture Toggle -------------------------------------------
+
+  if (pipToggle) {
+    if (!document.pictureInPictureEnabled) {
+      pipToggle.classList.add("hidden");
+    } else {
+      pipToggle.addEventListener("click", function () {
+        if (!video) return;
+        if (document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch(function () {});
+        } else {
+          video.requestPictureInPicture().catch(function () {});
+        }
+      });
+    }
+  }
+
+  // -- Fullscreen Toggle ---------------------------------------------------
+
+  if (fullscreenToggle) {
+    fullscreenToggle.addEventListener("click", function () {
+      var container = $("#embed-app");
+      if (!container) return;
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+      }
+    });
+
+    function onFullscreenChange() {
+      var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      var iconExpand = $("#icon-expand");
+      var iconCompress = $("#icon-compress");
+      if (iconExpand && iconCompress) {
+        iconExpand.classList.toggle("hidden", isFs);
+        iconCompress.classList.toggle("hidden", !isFs);
+      }
+    }
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
   }
 
   // -- Timer State ---------------------------------------------------------
