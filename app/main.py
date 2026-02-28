@@ -275,9 +275,11 @@ class EmbedHeadersMiddleware(BaseHTTPMiddleware):
                 frame_ancestors = "*"
             # Full CSP matching the nginx config — allows Google Fonts used
             # by the embed pages and permits WebSocket connections.
+            # media-src blob: is required for WebRTC video playback in iframes.
             csp = (
                 "default-src 'self'; "
                 "connect-src 'self' wss: ws:; "
+                "media-src 'self' blob:; "
                 "img-src 'self' data:; "
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                 "font-src 'self' https://fonts.gstatic.com; "
