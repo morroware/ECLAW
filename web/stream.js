@@ -157,6 +157,10 @@ class StreamPlayer {
    * Monitor video decode. If no frames arrive within 10s, tear down and
    * retry WebRTC from scratch (the next attempt may negotiate a different
    * codec path or hit a fresh keyframe).
+   *
+   * If the video is paused with a valid srcObject, autoplay was blocked
+   * (common on iPhone Safari). In that case, signal "autoplay_blocked"
+   * instead of reconnecting, so the UI can show a tap-to-play overlay.
    */
   _startFrameCheck() {
     if (this._frameCheckTimer) clearInterval(this._frameCheckTimer);
@@ -180,14 +184,29 @@ class StreamPlayer {
         return;
       }
 
-      // 10s without decoded frames — retry WebRTC entirely.
-      // Do NOT fall back to MJPEG (too expensive for internet delivery).
+      // After 3s, surface autoplay-blocked early so UI can react
+      if (checks === 3 && this.video.paused && this.video.srcObject) {
+        this._log("autoplay appears blocked");
+        this._setStatus("autoplay_blocked");
+        // Don't return — keep checking in case user taps
+      }
+
+      // 10s without decoded frames
       if (checks >= 10) {
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
-        this._log("no frames after 10s, retrying WebRTC...");
-        this._setStatus("reconnecting");
-        this._scheduleReconnect();
+
+        if (this.video.paused && this.video.srcObject) {
+          // Autoplay blocked — WebRTC connection is fine, the browser
+          // just won't render without a user gesture. Don't reconnect.
+          this._log("autoplay blocked, waiting for user interaction");
+          this._setStatus("autoplay_blocked");
+        } else {
+          // Genuine connection issue — reconnect WebRTC.
+          this._log("no frames after 10s, retrying WebRTC...");
+          this._setStatus("reconnecting");
+          this._scheduleReconnect();
+        }
       }
     }, 1000);
   }
@@ -229,7 +248,8 @@ class StreamPlayer {
   /**
    * Force video playback — mobile browsers (especially Safari) silently
    * ignore the autoplay attribute on dynamically-assigned MediaStreams.
-   * Retries on loadedmetadata to cover Safari timing edge cases.
+   * Retries on loadedmetadata AND canplay to cover Safari timing quirks,
+   * plus a delayed fallback for iOS devices where events fire too early.
    */
   _tryPlay() {
     const v = this.video;
@@ -244,5 +264,35 @@ class StreamPlayer {
       this._log("metadata loaded, playing...");
       attempt();
     }, { once: true });
+    v.addEventListener("canplay", () => {
+      this._log("canplay, attempting play...");
+      attempt();
+    }, { once: true });
+
+    // iOS Safari fallback: retry after a short delay in case the above
+    // events fired before the decoder was truly ready.
+    setTimeout(() => {
+      if (v.paused && v.srcObject) {
+        this._log("still paused after 1.5s, retrying play...");
+        attempt();
+      }
+    }, 1500);
+  }
+
+  /**
+   * Attempt to start playback after user interaction (tap overlay).
+   * Returns a promise that resolves true if playback started.
+   */
+  userPlay() {
+    const v = this.video;
+    const p = v.play();
+    if (p && typeof p.then === "function") {
+      return p.then(() => {
+        this._startFrameCheck();
+        return true;
+      }).catch(() => false);
+    }
+    this._startFrameCheck();
+    return Promise.resolve(true);
   }
 }

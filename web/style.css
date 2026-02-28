@@ -369,6 +369,59 @@ input, textarea {
   display: none;
 }
 
+/* -- Play Overlay (autoplay blocked — iPhone / mobile Safari) ------------- */
+
+#play-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+#play-overlay.hidden {
+  display: none;
+}
+
+#play-overlay-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 24px;
+  cursor: pointer;
+  color: white;
+  animation: playOverlayPulse 2s ease-in-out infinite;
+}
+
+#play-overlay-btn:active {
+  transform: scale(0.95);
+}
+
+.play-overlay-icon {
+  font-size: 3.5rem;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.5));
+}
+
+#play-overlay-btn span:last-child {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes playOverlayPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+
 /* -- HUD Overlay (top of video) ------------------------------------------ */
 
 #hud-top {

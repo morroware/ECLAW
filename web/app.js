@@ -226,22 +226,54 @@
 
   // -- Video Stream ---------------------------------------------------------
 
+  const playOverlay = $("#play-overlay");
+  const playOverlayBtn = $("#play-overlay-btn");
+
+  function showPlayOverlay() {
+    if (playOverlay) playOverlay.classList.remove("hidden");
+  }
+
+  function hidePlayOverlay() {
+    if (playOverlay) playOverlay.classList.add("hidden");
+  }
+
   function initStream() {
     const video = $("#stream-video");
     streamPlayer = new StreamPlayer(video, "/stream/cam");
 
-    // Show/hide reconnect button based on stream status
+    // Show/hide reconnect button / play overlay based on stream status
     streamPlayer.onStatusChange = (status) => {
-      if (!streamReconnectBtn) return;
       if (status === "reconnecting") {
-        streamReconnectBtn.classList.remove("hidden");
+        if (streamReconnectBtn) streamReconnectBtn.classList.remove("hidden");
+        hidePlayOverlay();
       } else if (status === "playing") {
-        streamReconnectBtn.classList.add("hidden");
+        if (streamReconnectBtn) streamReconnectBtn.classList.add("hidden");
+        hidePlayOverlay();
+      } else if (status === "autoplay_blocked") {
+        // iPhone / mobile Safari blocked autoplay — show tap-to-play
+        if (streamReconnectBtn) streamReconnectBtn.classList.add("hidden");
+        showPlayOverlay();
       }
     };
 
     streamPlayer.connect().catch((err) => {
       console.warn("Stream not available:", err.message);
+    });
+  }
+
+  // Play overlay — tap to start video on devices that block autoplay
+  if (playOverlayBtn) {
+    playOverlayBtn.addEventListener("click", () => {
+      if (streamPlayer) {
+        streamPlayer.userPlay().then((ok) => {
+          if (ok) hidePlayOverlay();
+        });
+      }
+    });
+  }
+  if (playOverlay) {
+    playOverlay.addEventListener("click", (e) => {
+      if (e.target === playOverlay && playOverlayBtn) playOverlayBtn.click();
     });
   }
 
