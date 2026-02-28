@@ -124,13 +124,13 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "tries_per_player":          {"cat": "Timing",       "label": "Tries Per Player",           "desc": "Number of claw drop attempts each player gets per turn."},
     "turn_time_seconds":         {"cat": "Timing",       "label": "Turn Time (seconds)",        "desc": "Hard time limit for an entire turn (all tries).", "restart": True},
     "try_move_seconds":          {"cat": "Timing",       "label": "Move Time (seconds)",        "desc": "Time allowed to move the claw before auto-drop."},
-    "post_drop_wait_seconds":    {"cat": "Timing",       "label": "Post-Drop Wait (seconds)",   "desc": "Time to wait after drop for win sensor."},
-    "post_drop_wait_no_sensor_seconds": {"cat": "Timing",   "label": "Post-Drop Wait w/o Sensor (seconds)", "desc": "Time to wait after drop when the win sensor is disabled."},
+    "post_drop_wait_seconds":    {"cat": "Timing",       "label": "Post-Drop Wait (seconds)",   "desc": "Time to wait after drop for win sensor to trigger."},
+    "post_drop_wait_no_sensor_seconds": {"cat": "Win Sensor", "label": "Post-Drop Wait (no sensor)", "desc": "Seconds to pause after each drop when win sensor is OFF. This is the window where the grab WLED preset plays. Increase for a longer celebration effect."},
     "ready_prompt_seconds":      {"cat": "Timing",       "label": "Ready Prompt (seconds)",     "desc": "Time the player has to press Ready.", "restart": True},
     "queue_grace_period_seconds":{"cat": "Timing",       "label": "Queue Grace Period (seconds)","desc": "Seconds before stale queue entries are cleaned on restart."},
 
     # -- Win Sensor --
-    "win_sensor_enabled":        {"cat": "Timing",          "label": "Win Sensor Enabled",       "desc": "Enable hardware win sensor. When off, the game skips win/loss detection and just advances the queue after the post-drop wait."},
+    "win_sensor_enabled":        {"cat": "Win Sensor",      "label": "Win Sensor Enabled",       "desc": "Enable hardware win sensor. When OFF, the claw drops and shows a grab effect instead of detecting win/loss. See WLED section for grab preset and timing."},
 
     # -- GPIO Pulse/Hold --
     "coin_pulses_per_credit":    {"cat": "GPIO Pulse/Hold", "label": "Coin Pulses Per Credit",  "desc": "Number of coin relay pulses per credit (e.g. 2 if the machine expects two coins)."},
@@ -245,10 +245,10 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "wled_preset_loss":          {"cat": "WLED",         "label": "Loss Preset ID",              "desc": "WLED preset to activate on a loss. 0 = no action."},
     "wled_preset_drop":          {"cat": "WLED",         "label": "Drop Preset ID",              "desc": "WLED preset to activate when the claw drops. 0 = no action."},
     "wled_preset_start_turn":    {"cat": "WLED",         "label": "Start Turn Preset ID",        "desc": "WLED preset to activate when a player's turn starts. 0 = no action."},
-    "wled_preset_idle":          {"cat": "WLED",         "label": "Idle Preset ID",              "desc": "WLED preset to activate when the machine returns to idle. 0 = no action."},
-    "wled_preset_expire":        {"cat": "WLED",         "label": "Expire Preset ID",            "desc": "WLED preset to activate when a turn expires. 0 = no action."},
-    "wled_preset_grab":          {"cat": "WLED",         "label": "Grab Preset ID",              "desc": "WLED preset for claw returning after drop (win sensor OFF only). 0 = no action."},
-    "wled_result_display_seconds": {"cat": "WLED",      "label": "Result Display Duration",     "desc": "Seconds to show win/loss/drop/grab/expire preset before reverting to idle. 0 = never revert."},
+    "wled_preset_idle":          {"cat": "WLED",         "label": "Idle Preset ID",              "desc": "Default/baseline preset the strip returns to after any event. This is your 'always on' look. 0 = no action (strip keeps last preset)."},
+    "wled_preset_expire":        {"cat": "WLED",         "label": "Expire Preset ID",            "desc": "WLED preset when a turn expires (timeout). 0 = no action."},
+    "wled_preset_grab":          {"cat": "WLED",         "label": "Grab Preset ID (no sensor)",  "desc": "Temporary celebration preset shown while the claw returns after each drop — only used when win sensor is OFF. Plays for 'Result Display Duration' seconds then reverts to idle. 0 = no action."},
+    "wled_result_display_seconds": {"cat": "WLED",      "label": "Result Display Duration (s)", "desc": "How long win/loss/drop/grab/expire presets blink before automatically reverting to the idle preset. Set 0 to never revert (not recommended)."},
 }
 
 
