@@ -17,6 +17,7 @@ from app.api.admin import admin_router
 from app.api.routes import router as api_router
 from app.api.stream import router as stream_router
 from app.api.stream_proxy import router as stream_proxy_router, close_proxy_client
+from app.api.hls_proxy import router as hls_proxy_router, close_hls_client
 from app.camera import Camera
 from app.config import settings
 from app.database import close_db, get_db, prune_old_entries
@@ -247,6 +248,7 @@ async def lifespan(app: FastAPI):
     from app.api.routes import close_health_http
     await close_health_http()
     await close_proxy_client()
+    await close_hls_client()
     await close_db()
     logger.info("Shutdown complete")
 
@@ -308,6 +310,7 @@ app.include_router(api_router)
 app.include_router(admin_router)
 app.include_router(stream_router)
 app.include_router(stream_proxy_router)
+app.include_router(hls_proxy_router)
 
 
 @app.get("/embed/watch", include_in_schema=False)

@@ -1,9 +1,14 @@
 /**
- * WebRTC Stream Player — connects to MediaMTX via WHEP protocol.
+ * Stream Player — connects to MediaMTX via WHEP (WebRTC), with automatic
+ * fallback to native HLS for iOS Safari when WebRTC UDP is unreachable.
  *
  * Designed for reliable internet delivery to dozens of concurrent viewers.
  * Reconnects automatically with exponential backoff on any failure.
  * Debug overlay available via ?debug query parameter.
+ *
+ * Playback priority:
+ *   1. WebRTC (lowest latency, requires UDP port 8189 reachable)
+ *   2. HLS    (native on all iPhone browsers, works over HTTPS/TCP)
  */
 class StreamPlayer {
   constructor(videoElement, streamBaseUrl) {
@@ -18,11 +23,17 @@ class StreamPlayer {
     this._debug = new URLSearchParams(location.search).has("debug");
     if (this._debug) this._createStatusOverlay();
 
+    // Current transport mode: "webrtc" or "hls"
+    this._mode = "webrtc";
+
     // Stream status callback — called with "connecting", "playing",
-    // "reconnecting", or "failed" so the UI can show/hide a reconnect button.
+    // "reconnecting", "autoplay_blocked", or "failed" so the UI can
+    // show/hide overlays.
     this.onStatusChange = null;
     this._status = "connecting";
   }
+
+  // -- Status & debug -------------------------------------------------------
 
   _setStatus(status) {
     this._status = status;
@@ -46,7 +57,10 @@ class StreamPlayer {
     if (this._statusEl) this._statusEl.textContent = "stream: " + msg;
   }
 
+  // -- Public API -----------------------------------------------------------
+
   async connect() {
+    this._mode = "webrtc";
     this._log("connecting via WHEP...");
     this._setStatus("connecting");
     try {
@@ -54,10 +68,61 @@ class StreamPlayer {
       this._backoff = 1000; // reset on successful connection
     } catch (e) {
       this._log("WHEP failed: " + e.message);
-      this._setStatus("reconnecting");
-      this._scheduleReconnect();
+      // If WebRTC signaling itself fails and native HLS is available,
+      // skip straight to HLS instead of retrying a broken WebRTC path.
+      if (this._canPlayHLS()) {
+        this._fallbackToHLS();
+      } else {
+        this._setStatus("reconnecting");
+        this._scheduleReconnect();
+      }
     }
   }
+
+  async reconnect() {
+    this.disconnect();
+    this._backoff = 1000;
+    await this.connect();
+  }
+
+  disconnect() {
+    if (this._frameCheckTimer) {
+      clearInterval(this._frameCheckTimer);
+      this._frameCheckTimer = null;
+    }
+    if (this.pc) {
+      this.pc.close();
+      this.pc = null;
+    }
+    if (this.sessionUrl) {
+      fetch(this.sessionUrl, { method: "DELETE", keepalive: true }).catch(() => {});
+      this.sessionUrl = null;
+    }
+    // Clear HLS source if active
+    if (this._mode === "hls") {
+      this.video.removeAttribute("src");
+      this.video.srcObject = null;
+    }
+  }
+
+  /**
+   * Attempt to start playback after user interaction (tap overlay).
+   * Returns a promise that resolves true if playback started.
+   */
+  userPlay() {
+    const v = this.video;
+    const p = v.play();
+    if (p && typeof p.then === "function") {
+      return p.then(() => {
+        this._startFrameCheck();
+        return true;
+      }).catch(() => false);
+    }
+    this._startFrameCheck();
+    return Promise.resolve(true);
+  }
+
+  // -- WebRTC (WHEP) --------------------------------------------------------
 
   async _connectWhep() {
     this.pc = new RTCPeerConnection({
@@ -103,8 +168,13 @@ class StreamPlayer {
       const state = this.pc.iceConnectionState;
       this._log("ICE: " + state);
       if (state === "failed") {
-        this._setStatus("reconnecting");
-        this._scheduleReconnect();
+        // ICE failed — likely UDP unreachable. Try HLS on capable browsers.
+        if (this._canPlayHLS()) {
+          this._fallbackToHLS();
+        } else {
+          this._setStatus("reconnecting");
+          this._scheduleReconnect();
+        }
       } else if (state === "disconnected") {
         // Temporary blip — give 10s to recover before reconnecting
         setTimeout(() => {
@@ -153,18 +223,55 @@ class StreamPlayer {
     this._log("SDP exchanged, waiting for media...");
   }
 
+  // -- HLS fallback ---------------------------------------------------------
+
   /**
-   * Monitor video decode. If no frames arrive within 10s, tear down and
-   * retry WebRTC from scratch (the next attempt may negotiate a different
-   * codec path or hit a fresh keyframe).
+   * Check if the browser can play HLS natively (true on all iPhone
+   * browsers and Safari on Mac).
+   */
+  _canPlayHLS() {
+    const v = document.createElement("video");
+    return v.canPlayType("application/vnd.apple.mpegurl") !== "";
+  }
+
+  /**
+   * Switch from WebRTC to native HLS. Tears down the peer connection and
+   * sets the video src to the LL-HLS playlist served by MediaMTX.
+   */
+  _fallbackToHLS() {
+    this._log("falling back to HLS...");
+    this.disconnect();
+    this._mode = "hls";
+    this._setStatus("connecting");
+
+    // Build HLS URL: /stream/cam → /hls/cam/index.m3u8
+    const streamName = this.baseUrl.replace(/^\/stream\//, "");
+    const hlsUrl = "/hls/" + streamName + "/index.m3u8";
+    this._log("HLS URL: " + hlsUrl);
+
+    this.video.srcObject = null;
+    this.video.src = hlsUrl;
+    this.video.muted = true;
+    this.video.playsInline = true;
+    this._tryPlay();
+    this._startFrameCheck();
+  }
+
+  // -- Frame check (shared by WebRTC and HLS) -------------------------------
+
+  /**
+   * Monitor video decode. Behaviour depends on the current transport:
    *
-   * If the video is paused with a valid srcObject, autoplay was blocked
-   * (common on iPhone Safari). In that case, signal "autoplay_blocked"
-   * instead of reconnecting, so the UI can show a tap-to-play overlay.
+   * WebRTC: If no frames after 10s and autoplay is not blocked, fall back
+   *   to HLS (if supported) or reconnect WebRTC.
+   * HLS: If no frames after 15s, the HLS stream is unavailable — switch
+   *   back to WebRTC retry loop.
    */
   _startFrameCheck() {
     if (this._frameCheckTimer) clearInterval(this._frameCheckTimer);
     let checks = 0;
+    const maxChecks = this._mode === "hls" ? 15 : 10;
+
     this._frameCheckTimer = setInterval(() => {
       checks++;
       const w = this.video.videoWidth;
@@ -172,12 +279,13 @@ class StreamPlayer {
       const ready = this.video.readyState;
 
       if (this._debug) {
-        this._log("check #" + checks + ": " + w + "x" + h +
+        this._log("[" + this._mode + "] check #" + checks + ": " + w + "x" + h +
           " ready=" + ready + " paused=" + this.video.paused);
       }
 
+      // Success — frames are decoding
       if (w > 0 && h > 0 && ready >= 2) {
-        this._log("playing " + w + "x" + h);
+        this._log(this._mode + " playing " + w + "x" + h);
         this._setStatus("playing");
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
@@ -185,31 +293,50 @@ class StreamPlayer {
       }
 
       // After 3s, surface autoplay-blocked early so UI can react
-      if (checks === 3 && this.video.paused && this.video.srcObject) {
-        this._log("autoplay appears blocked");
-        this._setStatus("autoplay_blocked");
-        // Don't return — keep checking in case user taps
+      if (checks === 3 && this.video.paused) {
+        var hasSrc = this._mode === "hls" ? !!this.video.src : !!this.video.srcObject;
+        if (hasSrc) {
+          this._log("autoplay appears blocked (" + this._mode + ")");
+          this._setStatus("autoplay_blocked");
+          // Don't return — keep checking in case user taps
+        }
       }
 
-      // 10s without decoded frames
-      if (checks >= 10) {
+      // Timeout without decoded frames
+      if (checks >= maxChecks) {
         clearInterval(this._frameCheckTimer);
         this._frameCheckTimer = null;
 
-        if (this.video.paused && this.video.srcObject) {
-          // Autoplay blocked — WebRTC connection is fine, the browser
-          // just won't render without a user gesture. Don't reconnect.
+        // Check for autoplay block first
+        var hasSrc2 = this._mode === "hls" ? !!this.video.src : !!this.video.srcObject;
+        if (this.video.paused && hasSrc2) {
           this._log("autoplay blocked, waiting for user interaction");
           this._setStatus("autoplay_blocked");
+          return;
+        }
+
+        if (this._mode === "webrtc") {
+          // WebRTC media path failed — try HLS if available
+          if (this._canPlayHLS()) {
+            this._fallbackToHLS();
+          } else {
+            this._log("no frames after " + maxChecks + "s, retrying WebRTC...");
+            this._setStatus("reconnecting");
+            this._scheduleReconnect();
+          }
         } else {
-          // Genuine connection issue — reconnect WebRTC.
-          this._log("no frames after 10s, retrying WebRTC...");
+          // HLS also failed — go back to WebRTC retry loop
+          this._log("HLS failed, retrying WebRTC...");
+          this.video.removeAttribute("src");
+          this._mode = "webrtc";
           this._setStatus("reconnecting");
           this._scheduleReconnect();
         }
       }
     }, 1000);
   }
+
+  // -- Reconnect logic ------------------------------------------------------
 
   _scheduleReconnect() {
     if (this._reconnecting) return;
@@ -224,26 +351,7 @@ class StreamPlayer {
     }, delay);
   }
 
-  async reconnect() {
-    this.disconnect();
-    this._backoff = 1000;
-    await this.connect();
-  }
-
-  disconnect() {
-    if (this._frameCheckTimer) {
-      clearInterval(this._frameCheckTimer);
-      this._frameCheckTimer = null;
-    }
-    if (this.pc) {
-      this.pc.close();
-      this.pc = null;
-    }
-    if (this.sessionUrl) {
-      fetch(this.sessionUrl, { method: "DELETE", keepalive: true }).catch(() => {});
-      this.sessionUrl = null;
-    }
-  }
+  // -- Playback helpers -----------------------------------------------------
 
   /**
    * Force video playback — mobile browsers (especially Safari) silently
@@ -272,27 +380,10 @@ class StreamPlayer {
     // iOS Safari fallback: retry after a short delay in case the above
     // events fired before the decoder was truly ready.
     setTimeout(() => {
-      if (v.paused && v.srcObject) {
+      if (v.paused && (v.srcObject || v.src)) {
         this._log("still paused after 1.5s, retrying play...");
         attempt();
       }
     }, 1500);
-  }
-
-  /**
-   * Attempt to start playback after user interaction (tap overlay).
-   * Returns a promise that resolves true if playback started.
-   */
-  userPlay() {
-    const v = this.video;
-    const p = v.play();
-    if (p && typeof p.then === "function") {
-      return p.then(() => {
-        this._startFrameCheck();
-        return true;
-      }).catch(() => false);
-    }
-    this._startFrameCheck();
-    return Promise.resolve(true);
   }
 }
