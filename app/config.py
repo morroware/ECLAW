@@ -119,7 +119,14 @@ class Settings(BaseSettings):
     wled_preset_idle: int = 0
     wled_preset_expire: int = 0
     wled_preset_grab: int = 0           # Fired during POST_DROP when win sensor is off (claw returning)
+    wled_preset_result: int = 0         # Fallback used when transient event-specific preset is unset
     wled_result_display_seconds: float = 5.0  # How long win/loss/drop/expire/grab shows before reverting to idle
+    wled_connect_timeout_s: float = 2.0
+    wled_read_timeout_s: float = 3.0
+    wled_write_timeout_s: float = 2.0
+    wled_pool_timeout_s: float = 2.0
+    wled_http_retries: int = 1
+    wled_retry_backoff_seconds: float = 0.15
 
     # DB maintenance: hours to keep completed entries before pruning
     db_retention_hours: int = 48
