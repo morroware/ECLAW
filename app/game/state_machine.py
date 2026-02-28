@@ -329,6 +329,10 @@ class StateMachine:
             self._state_deadline = time.monotonic() + wait
             if self.settings.win_sensor_enabled:
                 self.gpio.register_win_callback(self._win_bridge)
+            else:
+                # No win sensor — fire a "grab" WLED event so the strip
+                # shows a celebratory effect while the claw returns.
+                await self._wled_event("grab")
             self._state_timer = asyncio.create_task(
                 self._post_drop_timeout(wait)
             )
@@ -451,7 +455,9 @@ class StateMachine:
         except Exception:
             logger.exception("Error during turn-end cleanup (non-fatal)")
 
-        # Fire WLED event based on the turn result
+        # Fire WLED event based on the turn result.
+        # The WLEDClient handles auto-revert to idle after a configurable
+        # delay, so we do NOT fire a separate "idle" event here.
         wled_event = {"win": "win", "loss": "loss", "expired": "expire"}.get(result)
         if wled_event:
             await self._wled_event(wled_event)
@@ -463,9 +469,6 @@ class StateMachine:
         self.current_try = 0
         self._state_deadline = 0.0
         self._turn_deadline = 0.0
-
-        # Notify WLED of idle state
-        await self._wled_event("idle")
 
         # Schedule advance_queue as a separate task to prevent deadlock.
         # _end_turn is often called from timer callbacks that fire while
@@ -639,6 +642,9 @@ class StateMachine:
             self.gpio._locked = False
         finally:
             self._recovering = False
+
+        # Reset WLED to idle after recovery
+        await self._wled_event("idle")
 
         # Schedule advance outside the lock to avoid deadlock
         self._schedule_advance()

@@ -106,6 +106,8 @@ _RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
     "wled_preset_start_turn":       (0, 250),
     "wled_preset_idle":             (0, 250),
     "wled_preset_expire":           (0, 250),
+    "wled_preset_grab":             (0, 250),
+    "wled_result_display_seconds":  (0, 30),
 
     # Watchdog
     "watchdog_check_interval_s":    (1, 60),
@@ -245,6 +247,8 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "wled_preset_start_turn":    {"cat": "WLED",         "label": "Start Turn Preset ID",        "desc": "WLED preset to activate when a player's turn starts. 0 = no action."},
     "wled_preset_idle":          {"cat": "WLED",         "label": "Idle Preset ID",              "desc": "WLED preset to activate when the machine returns to idle. 0 = no action."},
     "wled_preset_expire":        {"cat": "WLED",         "label": "Expire Preset ID",            "desc": "WLED preset to activate when a turn expires. 0 = no action."},
+    "wled_preset_grab":          {"cat": "WLED",         "label": "Grab Preset ID",              "desc": "WLED preset for claw returning after drop (win sensor OFF only). 0 = no action."},
+    "wled_result_display_seconds": {"cat": "WLED",      "label": "Result Display Duration",     "desc": "Seconds to show win/loss/drop/grab/expire preset before reverting to idle. 0 = never revert."},
 }
 
 
