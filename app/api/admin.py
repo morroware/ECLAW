@@ -107,7 +107,14 @@ _RANGE_CONSTRAINTS: dict[str, tuple[float | int | None, float | int | None]] = {
     "wled_preset_idle":             (0, 250),
     "wled_preset_expire":           (0, 250),
     "wled_preset_grab":             (0, 250),
+    "wled_preset_result":           (0, 250),
     "wled_result_display_seconds":  (0, 30),
+    "wled_connect_timeout_s":       (0.1, 30),
+    "wled_read_timeout_s":          (0.1, 30),
+    "wled_write_timeout_s":         (0.1, 30),
+    "wled_pool_timeout_s":          (0.1, 30),
+    "wled_http_retries":            (0, 5),
+    "wled_retry_backoff_seconds":   (0, 5),
 
     # Watchdog
     "watchdog_check_interval_s":    (1, 60),
@@ -248,7 +255,14 @@ _CONFIG_META: dict[str, dict[str, Any]] = {
     "wled_preset_idle":          {"cat": "WLED",         "label": "Idle Preset ID",              "desc": "Default/baseline preset the strip returns to after any event. This is your 'always on' look. 0 = no action (strip keeps last preset)."},
     "wled_preset_expire":        {"cat": "WLED",         "label": "Expire Preset ID",            "desc": "WLED preset when a turn expires (timeout). 0 = no action."},
     "wled_preset_grab":          {"cat": "WLED",         "label": "Grab Preset ID (no sensor)",  "desc": "Temporary celebration preset shown while the claw returns after each drop — only used when win sensor is OFF. Plays for 'Result Display Duration' seconds then reverts to idle. 0 = no action."},
+    "wled_preset_result":        {"cat": "WLED",         "label": "Fallback Result Preset ID",    "desc": "Shared fallback for transient events (win/loss/drop/grab/expire) when their event-specific preset is set to 0."},
     "wled_result_display_seconds": {"cat": "WLED",      "label": "Result Display Duration (s)", "desc": "How long win/loss/drop/grab/expire presets blink before automatically reverting to the idle preset. Set 0 to never revert (not recommended)."},
+    "wled_connect_timeout_s":    {"cat": "WLED",         "label": "Connect Timeout (s)",          "desc": "Timeout for establishing WLED HTTP connections."},
+    "wled_read_timeout_s":       {"cat": "WLED",         "label": "Read Timeout (s)",             "desc": "Timeout for receiving WLED HTTP responses."},
+    "wled_write_timeout_s":      {"cat": "WLED",         "label": "Write Timeout (s)",            "desc": "Timeout for sending WLED HTTP request bodies."},
+    "wled_pool_timeout_s":       {"cat": "WLED",         "label": "Pool Timeout (s)",             "desc": "Timeout while waiting for an HTTP connection from the client pool."},
+    "wled_http_retries":         {"cat": "WLED",         "label": "HTTP Retries",                "desc": "How many times to retry a timed-out WLED request before giving up."},
+    "wled_retry_backoff_seconds": {"cat": "WLED",        "label": "Retry Backoff (s)",          "desc": "Delay between WLED timeout retries."},
 }
 
 
