@@ -218,13 +218,15 @@
     streamPlayer = new StreamPlayer(video, "/stream/cam");
 
     streamPlayer.onStatusChange = function (status) {
-      if (!streamReconnectBtn) return;
       if (status === "reconnecting") {
-        streamReconnectBtn.classList.remove("hidden");
+        if (streamReconnectBtn) streamReconnectBtn.classList.remove("hidden");
+        hidePlayOverlay();
       } else if (status === "playing") {
-        streamReconnectBtn.classList.add("hidden");
-        // Check if autoplay actually started
-        detectAutoplayBlock(video);
+        if (streamReconnectBtn) streamReconnectBtn.classList.add("hidden");
+        hidePlayOverlay();
+      } else if (status === "autoplay_blocked") {
+        if (streamReconnectBtn) streamReconnectBtn.classList.add("hidden");
+        showPlayOverlay();
       }
     };
 
@@ -263,17 +265,9 @@
   // Click the play overlay to start video
   if (playOverlayBtn) {
     playOverlayBtn.addEventListener("click", function () {
-      var video = $("#stream-video");
-      if (video) {
-        video.play().then(function () {
-          hidePlayOverlay();
-        }).catch(function () {
-          // Try muted autoplay as last resort
-          video.muted = true;
-          video.play().then(function () {
-            hidePlayOverlay();
-            updateMuteUI(true);
-          }).catch(function () {});
+      if (streamPlayer) {
+        streamPlayer.userPlay().then(function (ok) {
+          if (ok) hidePlayOverlay();
         });
       }
     });

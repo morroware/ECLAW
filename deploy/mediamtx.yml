@@ -12,6 +12,13 @@ rtspAddress: 127.0.0.1:8554
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889
 
+# Low-latency HLS — fallback for iOS Safari when WebRTC UDP is
+# unreachable (restrictive networks, missing port-forward, etc.).
+# All iPhone browsers support native HLS and it works over HTTPS/TCP.
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsVariant: lowLatency
+
 # ICE connectivity for internet access through a reverse proxy.
 #
 # webrtcAdditionalHosts tells MediaMTX to include the public IP/domain
